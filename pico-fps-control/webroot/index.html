@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PICO 帧率控制</title>
+<style>
+:root{--bg:#0f1115;--card:#181b21;--card2:#1f232b;--txt:#e8eaed;--sub:#9aa0a6;--acc:#8ab4f8;--ok:#81c995;--warn:#fdd663;--err:#f28b82}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding:16px;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--sub);font-size:13px;margin-bottom:16px}
+.card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px}
+.card h2{font-size:14px;color:var(--sub);font-weight:500;margin:0 0 12px;text-transform:uppercase;letter-spacing:.5px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #23262d}
+.row:last-child{border-bottom:none}
+.row .k{color:var(--sub)}
+.row .v{font-weight:600;font-variant-numeric:tabular-nums}
+.big{font-size:34px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
+.btns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+button{background:var(--card2);color:var(--txt);border:none;border-radius:12px;padding:14px 8px;font-size:15px;font-weight:600;cursor:pointer;transition:.15s}
+button:active{transform:scale(.96)}
+button.on{background:var(--acc);color:#0f1115}
+button.wide{grid-column:span 3}
+button.ghost{background:transparent;border:1px solid #33383f;color:var(--sub);font-weight:500;padding:10px}
+input,textarea{width:100%;background:var(--card2);border:1px solid #2b3038;border-radius:10px;color:var(--txt);padding:12px;font-size:14px;font-family:ui-monospace,monospace}
+textarea{resize:vertical;min-height:64px}
+.hint{color:var(--sub);font-size:12px;margin-top:8px;line-height:1.6}
+#log{background:#0b0d10;border-radius:10px;padding:12px;font:12px/1.5 ui-monospace,monospace;color:#bdc1c6;max-height:220px;overflow:auto;white-space:pre-wrap}
+.tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;background:#2b3038;color:var(--sub)}
+.tag.ok{background:rgba(129,201,149,.15);color:var(--ok)}
+.tag.warn{background:rgba(253,214,99,.15);color:var(--warn)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid #333;border-top-color:var(--acc);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<h1>PICO 帧率控制</h1>
+<div class="sub">PICO 4 Ultra · 刷新率解锁 <span id="ver" class="tag">v1.1</span></div>
+
+<div class="card">
+  <h2>当前状态</h2>
+  <div style="text-align:center;margin-bottom:12px">
+    <div class="big" id="curFps">--</div>
+    <div class="sub" id="curMode">读取中…</div>
+  </div>
+  <div class="row"><span class="k">显示模式</span><span class="v" id="activeMode">--</span></div>
+  <div class="row"><span class="k">GPU 温度</span><span class="v" id="temp">--</span></div>
+  <div class="row"><span class="k">守护进程</span><span class="v" id="daemon">--</span></div>
+</div>
+
+<div class="card">
+  <h2>固定帧率</h2>
+  <div class="btns">
+    <button data-fps="60">60<small style="display:block;font-weight:400;font-size:11px;opacity:.7">省电</small></button>
+    <button data-fps="72">72<small style="display:block;font-weight:400;font-size:11px;opacity:.7">默认</small></button>
+    <button data-fps="90">90<small style="display:block;font-weight:400;font-size:11px;opacity:.7">性能</small></button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>智能模式</h2>
+  <div class="btns">
+    <button id="btnAuto">自动<small style="display:block;font-weight:400;font-size:11px;opacity:.7">视频60</small></button>
+    <button id="btnCurve">温度曲线</button>
+    <button id="btnOff">关闭</button>
+  </div>
+  <div class="hint">自动：视频类 App（YouTube VR / B站）→ 60fps，其它 → 72fps。</div>
+</div>
+
+<div class="card" style="border:1px solid #5c1a1a">
+  <h2 style="color:#ff6b6b">🔥 狂暴模式</h2>
+  <div class="btns">
+    <button id="btnBerserk" style="background:#5c1a1a;color:#ff6b6b">风扇 100% + 90fps</button>
+    <button id="btnSysDefault" style="background:#1a2b1a;color:#6bffa8">遵从系统默认</button>
+    <button id="btnFanRestore" style="background:#2b3038;color:#9aa0a6">恢复默认</button>
+  </div>
+  <div class="hint">风扇由 stationservice (code 121) 控制，0-100%。恢复默认 = 50%。</div>
+</div>
+
+<div class="card">
+  <h2>🌡️ 温度曲线（可视化）</h2>
+  <div class="hint" style="margin-bottom:12px">拖动四个温度点，控制对应档位帧率。当前档位高亮，越靠左越激进。</div>
+
+  <svg viewBox="0 0 360 160" style="width:100%;background:#0f1115;border-radius:10px">
+    <!-- 网格 -->
+    <line x1="40" y1="10" x2="40" y2="130" stroke="#23262d"/>
+    <line x1="40" y1="130" x2="340" y2="130" stroke="#23262d"/>
+    <text x="8" y="20" fill="#666" font-size="9">90fps</text>
+    <text x="8" y="68" fill="#666" font-size="9">72</text>
+    <text x="8" y="126" fill="#666" font-size="9">45</text>
+    <text x="180" y="150" fill="#666" font-size="9">GPU 温度 °C →</text>
+    <!-- 曲线（4点分段） -->
+    <polyline id="cvLine" fill="none" stroke="#8ab4f8" stroke-width="2"/>
+    <!-- 四个可拖点 -->
+    <circle id="cvP0" r="6" fill="#8ab4f8" cursor="pointer"/>
+    <circle id="cvP1" r="6" fill="#8ab4f8" cursor="pointer"/>
+    <circle id="cvP2" r="6" fill="#8ab4f8" cursor="pointer"/>
+    <circle id="cvP3" r="6" fill="#8ab4f8" cursor="pointer"/>
+    <!-- 档位标注 -->
+    <text id="cvT0" fill="#ccc" font-size="10"></text>
+    <text id="cvT1" fill="#ccc" font-size="10"></text>
+    <text id="cvT2" fill="#ccc" font-size="10"></text>
+    <text id="cvT3" fill="#ccc" font-size="10"></text>
+  </svg>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">
+    <div><div class="hint">T1 温度</div><input type="number" id="inT0" style="width:100%"></div>
+    <div><div class="hint">T2 温度</div><input type="number" id="inT1" style="width:100%"></div>
+    <div><div class="hint">T3 温度</div><input type="number" id="inT2" style="width:100%"></div>
+    <div><div class="hint">T4 温度</div><input type="number" id="inT3" style="width:100%"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
+    <div><div class="hint">→ fps</div><input type="number" id="inF0" style="width:100%"></div>
+    <div><div class="hint">→ fps</div><input type="number" id="inF1" style="width:100%"></div>
+    <div><div class="hint">→ fps</div><input type="number" id="inF2" style="width:100%"></div>
+    <div><div class="hint">→ fps</div><input type="number" id="inF3" style="width:100%"></div>
+  </div>
+  <div class="btns" style="margin-top:12px">
+    <button id="btnSaveCurveV">保存曲线</button>
+    <button id="btnResetCurve" style="background:#2b3038;color:#9aa0a6">恢复默认</button>
+  </div>
+  <div class="hint">保存后 fpsd 的 CURVE= 会更新并立即生效（逗号分隔 8 个数：4温度+4帧率）。</div>
+</div>
+
+<div class="card">
+  <h2>风扇手动</h2>
+  <div style="display:flex;align-items:center;gap:12px">
+    <input type="range" id="fanSlider" min="0" max="100" value="50" style="flex:1"
+      oninput="document.getElementById('fanVal').textContent=this.value+'%'">
+    <span id="fanVal" style="font-weight:600;min-width:48px;text-align:right">50%</span>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <button style="flex:1;background:#2b3038" onclick="sh('service call PicoStation-new 121 i32 '+document.getElementById('fanSlider').value)">设置风扇</button>
+    <button style="flex:1;background:#5c1a1a;color:#ff6b6b" onclick="sh('service call PicoStation-new 121 i32 100')">全速</button>
+  </div>
+  <div class="hint" style="margin-top:8px">档位由 stationservice (PicoStation-new code 121) 控制，0-100%。部分档位可能有噪声差异。</div>
+</div>
+
+<div class="card">
+  <h2>温度曲线</h2>
+  <input id="curve" placeholder="45:90,50:72,55:60,60:45">
+  <div class="hint">格式 <code>温度:帧率</code>，逗号分隔。GPU 温度超过某档即降到对应帧率，用于自动控温。</div>
+  <div class="btns" style="margin-top:12px">
+    <button class="wide" id="btnSaveCurve">保存并启用曲线</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>风扇</h2>
+  <div class="row"><span class="k">硬件控制</span><span class="v"><span class="tag warn">不可用</span></span></div>
+  <div class="hint">PICO 4 Ultra 风扇由 GD32 MCU 经私有通道控制（API 在 libpxrfwcommon.so 的 Gd32IPDSDK::setFanSpeed，需在 PICO 服务进程内调用）。当前系统未暴露 sysfs/hwmon 节点。可用「温度曲线」间接实现同等效果：温度升高自动降帧，减少发热。</div>
+</div>
+
+<div class="card">
+  <h2>日志</h2>
+  <div id="log">加载中…</div>
+  <div class="btns" style="margin-top:12px">
+    <button class="ghost wide" id="btnRefresh">刷新</button>
+  </div>
+</div>
+
+<script>
+const KSU = window.ksu || window.KernelSU;
+async function sh(cmd){
+  if(!KSU) return "KSU bridge 不可用";
+  try{ const r = await KSU.exec(cmd); return (r.stdout||"")+(r.stderr||""); }
+  catch(e){ return "ERR: "+e; }
+}
+const BIN="/data/adb/modules/pico_fps_control/system/bin";
+let busy=false;
+async function refresh(){
+  if(busy) return; busy=true;
+  const st = await sh(BIN+"/fpsctl status 2>&1");
+  const g = k => (st.match(new RegExp(k+"=([^\\n]*)"))||[])[1]||"--";
+  document.getElementById("curFps").textContent = g("current")==="--"?"--":g("current")+" fps";
+  const modeMap={fixed:"固定帧率",auto:"自动模式",curve:"温度曲线",off:"已关闭",default:"系统默认"};
+  document.getElementById("curMode").textContent = modeMap[g("mode")]||g("mode");
+  document.getElementById("activeMode").textContent = (st.match(/activeMode=[0-9.]+ Hz/)||["--"])[0].replace("activeMode=","");
+  document.getElementById("temp").textContent = g("gpu_temp")==="--"?"--":g("gpu_temp")+" °C";
+  const d = await sh("cat /data/adb/pico_fps/fpsd.pid 2>/dev/null; ps -A 2>/dev/null | grep -c '[f]psd'");
+  document.getElementById("daemon").innerHTML = d.trim().endsWith("0")
+    ? '<span class="tag warn">未运行</span>'
+    : '<span class="tag ok">运行中</span>';
+  const cfg = await sh("cat /data/adb/pico_fps/config 2>/dev/null");
+  const cm = cfg.match(/CURVE=([^\n]*)/);
+  if(cm && !document.getElementById("curve").value) document.getElementById("curve").value = cm[1];
+  const lg = await sh("tail -n 20 /data/adb/pico_fps/fpsd.log 2>/dev/null");
+  document.getElementById("log").textContent = lg || "(空)";
+  busy=false;
+}
+async function act(cmd, label){
+  const btn=document.activeElement; if(btn) btn.disabled=true;
+  document.getElementById("curMode").textContent="执行中…";
+  const out = await sh(cmd);
+  await new Promise(r=>setTimeout(r,600));
+  await refresh();
+  if(btn) btn.disabled=false;
+  if(out && out.trim()) console.log(label, out);
+}
+document.querySelectorAll("[data-fps]").forEach(b=>{
+  b.onclick=()=>act(BIN+"/fpsctl set "+b.dataset.fps, "set");
+});
+document.getElementById("btnAuto").onclick=()=>act(BIN+"/fpsctl auto","auto");
+document.getElementById("btnCurve").onclick=()=>act(BIN+"/fpsctl curve","curve");
+document.getElementById("btnOff").onclick=()=>act(BIN+"/fpsctl off","off");
+document.getElementById("btnSaveCurve").onclick=async()=>{
+  const v=document.getElementById("curve").value.trim();
+  if(!v){alert("请输入曲线");return;}
+  await sh("mkdir -p /data/adb/pico_fps; touch /data/adb/pico_fps/config; "+
+    "if grep -q '^CURVE=' /data/adb/pico_fps/config; then sed -i 's|^CURVE=.*|CURVE="+v+"|' /data/adb/pico_fps/config; "+
+    "else echo 'CURVE="+v+"' >> /data/adb/pico_fps/config; fi; "+
+    BIN+"/fpsctl curve");
+  await refresh();
+};
+document.getElementById("btnRefresh").onclick=refresh;
+
+// ===== 温度曲线可视化 =====
+const CV = { pts: [45,50,55,60], fps: [90,72,60,45] };
+const SVG_W = 340, SVG_H = 130, X0 = 40, Y0 = 130, SCALE = 100;
+
+function cvX(t){ return X0 + (t/100)*(SVG_W-X0); }
+function cvY(f){ return Y0 - (f/90)*(Y0-10); }
+function x2t(x){ return Math.round(((x-X0)/(SVG_W-X0))*100); }
+function y2f(y){ return Math.round(((Y0-y)/(Y0-10))*90); }
+
+function cvDraw(){
+  const line = document.getElementById("cvLine");
+  if(!line) return;
+  let d = "";
+  CV.pts.forEach((t,i)=>{
+    d += (i===0?"M":"L") + cvX(t) + " " + cvY(CV.fps[i]) + " ";
+    const c = document.getElementById("cvP"+i);
+    c.setAttribute("cx", cvX(t)); c.setAttribute("cy", cvY(CV.fps[i]));
+    const tx = document.getElementById("cvT"+i);
+    tx.setAttribute("x", cvX(t)-18); tx.setAttribute("y", cvY(CV.fps[i])-10);
+    tx.textContent = t+"°/"+CV.fps[i];
+  });
+  line.setAttribute("points", d.trim());
+  for(let i=0;i<4;i++){
+    document.getElementById("inT"+i).value = CV.pts[i];
+    document.getElementById("inF"+i).value = CV.fps[i];
+  }
+}
+function cvLoad(){
+  sh("grep '^CURVE=' /data/adb/pico_fps/config").then(r=>{
+    const m = (r||"").match(/CURVE=([\d:,.]+)/);
+    if(m){
+      const nums = m[1].split(",").map(Number);
+      if(nums.length===8){ CV.pts=nums.slice(0,4); CV.fps=nums.slice(4,8); }
+    }
+    cvDraw();
+  });
+}
+function cvDrag(i){
+  const c = document.getElementById("cvP"+i);
+  let dragging=false;
+  c.addEventListener("pointerdown", e=>{ dragging=true; e.preventDefault(); });
+  const svg = c.ownerSVGElement;
+  svg.addEventListener("pointermove", e=>{
+    if(!dragging) return;
+    const rect = svg.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (360/rect.width);
+    const y = (e.clientY - rect.top) * (160/rect.height);
+    CV.pts[i] = Math.max(0, Math.min(100, x2t(x)));
+    CV.fps[i] = Math.max(45, Math.min(90, y2f(y)));
+    if(i>0 && CV.pts[i] <= CV.pts[i-1]) CV.pts[i] = CV.pts[i-1]+1;
+    if(i<3 && CV.pts[i] >= CV.pts[i+1]) CV.pts[i] = CV.pts[i+1]-1;
+    cvDraw();
+  });
+  svg.addEventListener("pointerup", ()=>{ dragging=false; });
+}
+for(let i=0;i<4;i++) cvDrag(i);
+setTimeout(()=>{ cvLoad(); }, 1000);
+const bsc = document.getElementById("btnSaveCurveV");
+if(bsc) bsc.onclick = ()=>{
+  const all = [...CV.pts, ...CV.fps].join(",");
+  sh("sed -i 's/^CURVE=.*/CURVE="+all+"/' /data/adb/pico_fps/config");
+  sh(BIN+"/fpsctl curve");
+  alert("曲线已保存: "+all);
+};
+const brc = document.getElementById("btnResetCurve");
+if(brc) brc.onclick = ()=>{
+  CV.pts=[45,50,55,60]; CV.fps=[90,72,60,45];
+  sh("sed -i 's/^CURVE=.*/CURVE=45,50,55,60,90,72,60,45/' /data/adb/pico_fps/config");
+  cvDraw();
+};
+// 数字输入联动
+for(let i=0;i<4;i++){
+  const it=document.getElementById("inT"+i), if_=document.getElementById("inF"+i);
+  if(it) it.onchange=()=>{ CV.pts[i]=Number(it.value)||45; cvDraw(); };
+  if(if_) if_.onchange=()=>{ CV.fps[i]=Number(if_.value)||72; cvDraw(); };
+}
+const bb=document.getElementById("btnBerserk");
+if(bb) bb.onclick=()=>{
+  if(!confirm("狂暴模式：风扇 100% + 锁 90fps。风噪大、耗电高。确定？")) return;
+  sh("service call PicoStation-new 121 i32 100");
+  sh(BIN+"/fpsctl set 90");
+  refresh();
+};
+const bf=document.getElementById("btnFanRestore");
+if(bf) bf.onclick=()=>{ sh("service call PicoStation-new 121 i32 50"); refresh(); };
+const bsd=document.getElementById("btnSysDefault");
+if(bsd) bsd.onclick=()=>{
+  if(!confirm("遵从系统默认：移除全部补丁，帧率和风扇都交给系统。确定？")) return;
+  sh(BIN+"/fpsctl default");
+  setTimeout(refresh, 1500);
+};
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

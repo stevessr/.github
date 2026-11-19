@@ -1,0 +1,7 @@
+#!/system/bin/sh
+LOGD=/data/adb/pico_fps
+[ -f "$LOGD/fpsd.pid" ] && kill -9 "$(cat $LOGD/fpsd.pid)" 2>/dev/null
+[ -f "$LOGD/watchdog.pid" ] && kill -9 "$(cat $LOGD/watchdog.pid)" 2>/dev/null
+pkill -9 -f 'pico_fps_control/system/bin/fpsd' 2>/dev/null
+rm -f "$LOGD/fpsd.pid" "$LOGD/watchdog.pid"
+echo "fpsd stopped"
