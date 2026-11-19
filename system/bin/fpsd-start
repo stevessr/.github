@@ -1,0 +1,20 @@
+#!/system/bin/sh
+B=/data/adb/modules/pico_fps_control/system/bin
+PIDF=/data/adb/pico_fps/fpsd.pid
+LOGD=/data/adb/pico_fps
+mkdir -p "$LOGD"
+# 停旧的看门狗 + daemon
+[ -f "$LOGD/watchdog.pid" ] && kill -9 "$(cat $LOGD/watchdog.pid)" 2>/dev/null
+[ -f "$PIDF" ] && kill -9 "$(cat $PIDF)" 2>/dev/null
+pkill -9 -f 'pico_fps_control/system/bin/fpsd' 2>/dev/null
+sleep 1
+# 看门狗：daemon 意外退出则自动重启
+setsid sh -c "
+echo \$\$ > $LOGD/watchdog.pid
+while true; do
+  $B/fpsd
+  sleep 3
+done
+" </dev/null >/dev/null 2>&1 &
+sleep 2
+echo "watchdog=$(cat $LOGD/watchdog.pid 2>/dev/null) daemon=$(cat $PIDF 2>/dev/null)"

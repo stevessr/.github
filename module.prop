@@ -1,0 +1,6 @@
+id=pico_fps_control
+name=PICO FPS Control
+version=v1.2.0
+versionCode=12000
+author=stevessr
+description=解锁 PICO 4 Ultra 刷新率白名单：60/72/90fps + 狂暴模式 + 风扇控制 + 可视化温度曲线。纯内存补丁。

@@ -1,0 +1,112 @@
+#!/system/bin/sh
+# fpsd - 帧率守护进程 v1.1（自愈 + auto + 温度曲线）
+BIN=/data/adb/modules/pico_fps_control/system/bin
+CONF=/data/adb/pico_fps/config
+PXRFPS=$BIN/pxrfps
+PATCH=$BIN/fpspatch.sh
+LOG=/data/adb/pico_fps/fpsd.log
+PIDF=/data/adb/pico_fps/fpsd.pid
+mkdir -p /data/adb/pico_fps
+echo $$ > "$PIDF"
+log() { echo "[$(date +%H:%M:%S)] $*" >> "$LOG"; }
+trap 'echo "[$(date +%H:%M:%S)] fpsd exiting $" >> "$LOG"; exit 0' TERM INT HUP
+log "fpsd v1.1 started pid=$"
+
+VIDEO_PKGS="com.google.android.apps.youtube.vr.pico tv.danmaku.bili com.picovr.player"
+last_patch=0; last_fg=0; last_temp=0; last_fan=0; fg_pkg=""; target=72; applied_patch=""
+
+gpu_temp() {
+  local t
+  for z in /sys/class/thermal/thermal_zone*; do
+    [ "$(cat $z/type 2>/dev/null)" = "gpuss-0" ] && { t=$(cat $z/temp 2>/dev/null); echo $((t/1000)); return; }
+  done
+  echo 0
+}
+
+while true; do
+  NOW=$(date +%s)
+  MODE=$(grep '^MODE=' "$CONF" 2>/dev/null | cut -d= -f2)
+  FIXED=$(grep '^FPS=' "$CONF" 2>/dev/null | cut -d= -f2)
+  AV=$(grep '^AUTO_VIDEO=' "$CONF" 2>/dev/null | cut -d= -f2); [ -z "$AV" ] && AV=60
+  AO=$(grep '^AUTO_OTHER=' "$CONF" 2>/dev/null | cut -d= -f2); [ -z "$AO" ] && AO=72
+  # 温度曲线: CURVE="45:90,50:72,55:60,60:45"  (温度:帧率)
+  CURVE=$(grep '^CURVE=' "$CONF" 2>/dev/null | cut -d= -f2)
+  [ -z "$CURVE" ] && CURVE="45:90,50:72,55:60,60:45"
+
+  # 1) 自愈：pxrhmdservice 重启后重打补丁
+  if [ $((NOW - last_patch)) -ge 10 ]; then
+    CUR_PID=$(pidof pxrhmdservice)
+    if [ -n "$CUR_PID" ] && [ "$CUR_PID" != "$last_pid" ]; then
+      last_pid=$CUR_PID; applied_patch=""
+      log "pxrhmdservice pid=$CUR_PID, re-patch"
+    fi
+    last_patch=$NOW
+  fi
+
+  # 2) 计算目标
+  case "$MODE" in
+    default)
+      # 遵从系统默认：移除全部补丁，不设置任何帧率
+      if [ "$applied_patch" != "default" ]; then
+        sh "$PATCH" restore >/dev/null 2>&1
+        applied_patch="default"
+        log "mode=default, all patches restored"
+      fi
+      sleep 5
+      continue ;;
+    off) target=72 ;;
+    fixed) target=${FIXED:-72} ;;
+    auto)
+      if [ $((NOW - last_fg)) -ge 5 ]; then
+        fg_pkg=$(dumpsys activity activities 2>/dev/null | grep -m1 topResumedActivity | sed -n 's/.*u0 \([^/]*\)\/.*/\1/p')
+        last_fg=$NOW
+      fi
+      target=$AO
+      for v in $VIDEO_PKGS; do [ "$fg_pkg" = "$v" ] && target=$AV; done
+      ;;
+    curve)
+      if [ $((NOW - last_temp)) -ge 3 ]; then
+        T=$(gpu_temp); last_temp=$NOW
+        target=90
+        for seg in $(echo "$CURVE" | tr ',' ' '); do
+          st=${seg%%:*}; sf=${seg##*:}
+          [ "$T" -ge "$st" ] && target=$sf
+        done
+      fi
+      ;;
+  esac
+
+  # 3) 按目标选择补丁
+  NEED=""
+  [ "$target" = "90" ] && NEED=force90
+  [ "$target" = "72" ] && NEED=restore
+  [ -z "$NEED" ] && NEED=allow60
+  if [ "$NEED" != "$applied_patch" ]; then
+    sh "$PATCH" "$NEED" >/dev/null 2>&1
+    applied_patch=$NEED
+    log "patch=$NEED (target=$target mode=$MODE)"
+  fi
+
+  # 3.5) 风扇维持 / 跟随温度
+  FAN=$(grep '^FAN=' "$CONF" 2>/dev/null | cut -d= -f2)
+  if [ -n "$FAN" ] && [ "$MODE" != "off" ] && [ "$MODE" != "default" ]; then
+    if [ $((NOW - last_fan)) -ge 2 ]; then
+      service call PicoStation-new 121 i32 "$FAN" >/dev/null 2>&1
+      last_fan=$NOW
+    fi
+  elif [ "$MODE" = "curve" ]; then
+    if [ "$target" -ge 90 ]; then
+      service call PicoStation-new 121 i32 100 >/dev/null 2>&1
+    elif [ "$target" -le 60 ]; then
+      service call PicoStation-new 121 i32 40 >/dev/null 2>&1
+    fi
+  fi
+
+  # 4) 应用
+  CUR=$($PXRFPS 0 read 2>/dev/null | grep -oE 'val=[0-9.]+' | head -1 | cut -d= -f2 | cut -d. -f1)
+  if [ "$CUR" != "$target" ]; then
+    $PXRFPS "$target" >/dev/null 2>&1
+    log "apply $target (was $CUR mode=$MODE fg=$fg_pkg)"
+  fi
+  [ "$target" = "90" ] && sleep 1 || sleep 2
+done
