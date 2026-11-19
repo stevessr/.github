@@ -1,0 +1,6 @@
+id=pico_vr_multiwindow
+name=PICO VR Multi-Window 2D
+version=v1.6.0
+versionCode=16000
+author=stevessr
+description=PICO 4 Ultra VR 多窗口 2D + 悬浮窗权限/桥接：支持射线指向抢占焦点、菜单控制、智能自动与 2D 常驻四种焦点模式。

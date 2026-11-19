@@ -1,0 +1,184 @@
+#!/system/bin/sh
+# mwctl - PICO VR Multi-Window CLI 控制脚本
+export PATH=/system/bin:/vendor/bin:/data/adb/ksu/bin:$PATH
+MODDIR=/data/adb/modules/pico_vr_multiwindow
+PATCHER=$MODDIR/system/bin/xrshell_dist_patch
+DAEMON=$MODDIR/system/bin/mw_daemon.sh
+CONF=/data/adb/pico_vr_multiwindow/config
+PIDF=/data/adb/pico_vr_multiwindow/mw_daemon.pid
+
+set_conf() {
+  mkdir -p /data/adb/pico_vr_multiwindow
+  touch "$CONF"
+  if grep -q "^$1=" "$CONF" 2>/dev/null; then
+    sed -i "s|^$1=.*|$1=$2|" "$CONF"
+  else
+    echo "$1=$2" >> "$CONF"
+  fi
+}
+
+get_conf() {
+  v=$(grep "^$1=" "$CONF" 2>/dev/null | cut -d= -f2)
+  [ -n "$v" ] && echo "$v" || echo "$2"
+}
+
+ensure_daemon() {
+  if [ -f "$PIDF" ]; then
+    OLD=$(cat "$PIDF" 2>/dev/null)
+    [ -n "$OLD" ] && [ -d "/proc/$OLD" ] && return 0
+  fi
+  nohup sh "$DAEMON" >/dev/null 2>&1 &
+}
+
+case "$1" in
+  focus)
+    M="${2:-menu}"
+    set_conf FOCUS_MODE "$M"
+    HD=$(get_conf HOVER_DELAY 250)
+    XPID=$(pidof com.picoxr.xrshell 2>/dev/null)
+    if [ -n "$XPID" ] && [ -x "$PATCHER" ]; then
+      if [ "$M" = "always2d" ]; then
+        "$PATCHER" "$XPID" focus_restore >/dev/null 2>&1
+      elif [ "$M" = "hover" ]; then
+        "$PATCHER" "$XPID" focus_hover "$HD" >/dev/null 2>&1
+      elif [ "$M" = "menu" ]; then
+        "$PATCHER" "$XPID" focus_patch >/dev/null 2>&1
+      fi
+    fi
+    ensure_daemon
+    echo "focus_mode=$M"
+    ;;
+  hover_delay)
+    MS="${2:-250}"
+    set_conf HOVER_DELAY "$MS"
+    XPID=$(pidof com.picoxr.xrshell 2>/dev/null)
+    if [ -n "$XPID" ] && [ -x "$PATCHER" ]; then
+      "$PATCHER" "$XPID" hover_delay "$MS" >/dev/null 2>&1
+    fi
+    echo "hover_delay=$MS"
+    ;;
+  dist)
+    V="${2:-1}"
+    set_conf DIST_PATCH "$V"
+    XPID=$(pidof com.picoxr.xrshell 2>/dev/null)
+    if [ -n "$XPID" ] && [ -x "$PATCHER" ]; then
+      [ "$V" = "1" ] && "$PATCHER" "$XPID" dist_patch >/dev/null 2>&1 || "$PATCHER" "$XPID" dist_restore >/dev/null 2>&1
+    fi
+    echo "dist_patch=$V"
+    ;;
+  repatch)
+    M=$(get_conf FOCUS_MODE menu)
+    D=$(get_conf DIST_PATCH 1)
+    HD=$(get_conf HOVER_DELAY 250)
+    XPID=$(pidof com.picoxr.xrshell 2>/dev/null)
+    if [ -n "$XPID" ] && [ -x "$PATCHER" ]; then
+      [ "$D" = "1" ] && "$PATCHER" "$XPID" dist_patch >/dev/null 2>&1 || "$PATCHER" "$XPID" dist_restore >/dev/null 2>&1
+      if [ "$M" = "always2d" ]; then
+        "$PATCHER" "$XPID" focus_restore >/dev/null 2>&1
+      elif [ "$M" = "hover" ]; then
+        "$PATCHER" "$XPID" focus_hover "$HD" >/dev/null 2>&1
+      else
+        "$PATCHER" "$XPID" focus_patch >/dev/null 2>&1
+      fi
+    fi
+    ensure_daemon
+    echo "repatched"
+    ;;
+  overlay_list)
+    SCOPE="${2:-decl}"
+    DENY=$(settings get global pico_vr_overlay_bridge_deny 2>/dev/null)
+    [ "$DENY" = "null" ] && DENY=""
+    for pkg in $(pm list packages -3 2>/dev/null | cut -d: -f2 | sort); do
+      SHOW=0
+      if [ "$SCOPE" = "all" ]; then
+        SHOW=1
+      elif dumpsys package "$pkg" 2>/dev/null | grep -q "android.permission.SYSTEM_ALERT_WINDOW"; then
+        SHOW=1
+      fi
+      if [ "$SHOW" = "1" ]; then
+        st=$(appops get "$pkg" SYSTEM_ALERT_WINDOW 2>/dev/null | grep -oE 'allow|ignore|deny|default' | head -1)
+        [ -z "$st" ] && st="default"
+        case "$DENY" in
+          *",$pkg,"*) br=0 ;;
+          *) br=1 ;;
+        esac
+        echo "$pkg|$st|$br"
+      fi
+    done
+    ;;
+  overlay_set)
+    PKG="$2"; MODE="${3:-allow}"
+    [ -z "$PKG" ] && exit 1
+    appops set "$PKG" SYSTEM_ALERT_WINDOW "$MODE" 2>/dev/null
+    echo "$PKG=$MODE"
+    ;;
+  overlay_bridge)
+    PKG="$2"; ON="${3:-1}"
+    [ -z "$PKG" ] && exit 1
+    CUR=$(settings get global pico_vr_overlay_bridge_deny 2>/dev/null)
+    [ "$CUR" = "null" ] && CUR=""
+    # Normalize to comma-bounded list and remove existing entry
+    CLEAN=$(echo "$CUR" | tr ',' '\n' | grep -v '^$' | grep -Fxv "$PKG" | tr '\n' ',')
+    if [ "$ON" = "0" ]; then
+      NEW=",${CLEAN}${PKG},"
+    else
+      [ -n "$CLEAN" ] && NEW=",${CLEAN}" || NEW=""
+    fi
+    if [ -n "$NEW" ]; then
+      settings put global pico_vr_overlay_bridge_deny "$NEW" 2>/dev/null
+    else
+      settings delete global pico_vr_overlay_bridge_deny 2>/dev/null
+    fi
+    set_conf OV_BRIDGE_DENY "$NEW"
+    echo "$PKG=$ON"
+    ;;
+  overlay_grant_all)
+    CNT=0
+    for pkg in $(pm list packages -3 2>/dev/null | cut -d: -f2); do
+      if dumpsys package "$pkg" 2>/dev/null | grep -q "android.permission.SYSTEM_ALERT_WINDOW"; then
+        appops set "$pkg" SYSTEM_ALERT_WINDOW allow 2>/dev/null
+        CNT=$((CNT + 1))
+      fi
+    done
+    echo "granted=$CNT"
+    ;;
+  overlay_revoke_all)
+    CNT=0
+    for pkg in $(pm list packages -3 2>/dev/null | cut -d: -f2); do
+      if dumpsys package "$pkg" 2>/dev/null | grep -q "android.permission.SYSTEM_ALERT_WINDOW"; then
+        appops set "$pkg" SYSTEM_ALERT_WINDOW default 2>/dev/null
+        CNT=$((CNT + 1))
+      fi
+    done
+    echo "revoked=$CNT"
+    ;;
+  status)
+    echo "EN=$(settings get global pico_vr_multiwindow 2>/dev/null)"
+    echo "FR=$(settings get global pico_vr_force_resize 2>/dev/null)"
+    echo "OV_BRIDGE=$(settings get global pico_vr_overlay_bridge 2>/dev/null)"
+    echo "MX=$(settings get system pvr.xrshell.overlay_panel_count 2>/dev/null)"
+    echo "FMODE=$(get_conf FOCUS_MODE menu)"
+    echo "HOVER_DELAY=$(get_conf HOVER_DELAY 250)"
+    echo "NEAR_CAP=$(settings get system pvr.app.data.near_captionbar_enable 2>/dev/null)"
+    echo "NO_HOVER=$(settings get global pvr.disable.inject.hover 2>/dev/null)"
+    echo "HAND_HOME=$(settings get system pvr.app.data.hand_home_enable 2>/dev/null)"
+    echo "TOP_APP=$(settings get global pvr.app.data.top_app_on_default_display 2>/dev/null | cut -d/ -f1)"
+    H1=$(sha256sum /system/framework/services.jar 2>/dev/null | awk '{print $1}')
+    H2=$(sha256sum "$MODDIR/system/framework/services.jar" 2>/dev/null | awk '{print $1}')
+    if [ -n "$H1" ] && [ "$H1" = "$H2" ]; then echo "PATCHED=1"; else echo "PATCHED=0"; fi
+    XPID=$(pidof com.picoxr.xrshell 2>/dev/null)
+    if [ -n "$XPID" ] && [ -x "$PATCHER" ]; then
+      "$PATCHER" "$XPID" status 2>/dev/null
+    else
+      echo "xrshell_dist_patch=0"
+      echo "xrshell_focus_patch=0"
+    fi
+    D_OK=0
+    if [ -f "$PIDF" ]; then
+      OLD=$(cat "$PIDF" 2>/dev/null)
+      [ -n "$OLD" ] && [ -d "/proc/$OLD" ] && D_OK=1
+    fi
+    echo "DAEMON=$D_OK"
+    echo "APPS=$(dumpsys display 2>/dev/null | grep -oE 'NS_APP\[[^]]+\]' | sort -u | tr '\n' ',')"
+    ;;
+esac

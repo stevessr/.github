@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PICO VR 多窗口 2D</title>
+<style>
+:root{
+  --bg:#f7f7f7;
+  --surface:#ffffff;
+  --surface-2:#f0f0f3;
+  --txt:#141416;
+  --txt-2:#6e6e73;
+  --divider:rgba(0,0,0,.06);
+  --border:rgba(0,0,0,.05);
+  --primary:#3482ff;
+  --primary-fg:#ffffff;
+  --primary-soft:rgba(52,130,255,.12);
+  --ok:#24b457;
+  --ok-soft:rgba(36,180,87,.12);
+  --warn:#e59200;
+  --warn-soft:rgba(229,146,0,.13);
+  --topbar:rgba(247,247,247,.82);
+  --shadow:0 2px 12px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000000;
+    --surface:#1c1c1e;
+    --surface-2:#262629;
+    --txt:#f5f5f7;
+    --txt-2:#8e8e93;
+    --divider:rgba(255,255,255,.08);
+    --border:rgba(255,255,255,.06);
+    --primary:#3482ff;
+    --primary-fg:#ffffff;
+    --primary-soft:rgba(52,130,255,.18);
+    --ok:#30d158;
+    --ok-soft:rgba(48,209,88,.16);
+    --warn:#ff9f0a;
+    --warn-soft:rgba(255,159,10,.16);
+    --topbar:rgba(0,0,0,.78);
+    --shadow:none;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font:14px/1.45 -apple-system,BlinkMacSystemFont,"MiSans","SF Pro Text","Segoe UI",Roboto,sans-serif}
+body{padding-bottom:calc(36px + env(safe-area-inset-bottom))}
+.topbar{position:sticky;top:0;z-index:40;background:var(--topbar);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--divider)}
+.topbar-inner{max-width:640px;margin:0 auto;padding:14px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.title-wrap h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.2}
+.title-wrap .sub{font-size:12px;color:var(--txt-2);margin-top:2px}
+.top-pills{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.wrap{max-width:640px;margin:0 auto;padding:12px 14px 0}
+.small-title{font-size:12.5px;font-weight:600;color:var(--txt-2);padding:14px 14px 7px;display:flex;align-items:center;justify-content:space-between}
+.small-title:first-child{padding-top:4px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
+.hero-card{background:radial-gradient(120% 90% at 95% 5%,var(--primary-soft),transparent 60%),var(--surface)}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.stat-tile{background:var(--surface-2);border-radius:12px;padding:10px}
+.stat-tile .k{font-size:11px;color:var(--txt-2);margin-bottom:2px}
+.stat-tile .v{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:11.5px;font-weight:600;background:var(--surface-2);color:var(--txt-2)}
+.pill.primary{background:var(--primary-soft);color:var(--primary)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--divider)}
+.row:first-child{padding-top:2px}
+.row:last-child{border-bottom:none;padding-bottom:2px}
+.row-title{font-size:14px;font-weight:600}
+.row-desc{font-size:12px;color:var(--txt-2);margin-top:2px;line-height:1.45}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ov-scroll{max-height:360px;overflow-y:auto;margin-top:8px}
+.ov-pkg{font-size:12.5px;font-weight:600;word-break:break-all}
+.ov-state{font-size:11px;color:var(--txt-2);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap}
+.ov-item{padding:11px 0;border-bottom:1px solid var(--divider)}
+.ov-item:last-child{border-bottom:none;padding-bottom:2px}
+.ov-ctrls{display:flex;align-items:center;gap:10px;margin-top:8px}
+.ov-ctrl-pill{flex:1;display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border-radius:12px;padding:6px 10px;font-size:12px;font-weight:600}
+.ov-search-row{display:flex;gap:8px;margin-top:10px}
+.mi-input{flex:1;min-width:0;appearance:none;border:1px solid var(--border);background:var(--surface-2);color:var(--txt);border-radius:12px;padding:9px 12px;font:500 13px/1.2 inherit;outline:none}
+.mi-input:focus{border-color:var(--primary)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:var(--surface-2);padding:4px;border-radius:14px;margin-top:10px}
+.seg button{background:transparent;padding:7px 4px;border-radius:10px;font-size:12px;color:var(--txt-2)}
+.seg button.on{background:var(--surface);color:var(--primary);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+.switch.sm{width:40px;height:23px}
+.switch.sm .slider:before{width:17px;height:17px;left:3px;top:3px}
+.switch.sm input:checked + .slider:before{transform:translateX(17px)}
+button{appearance:none;border:none;background:var(--surface-2);color:var(--txt);border-radius:14px;padding:11px 8px;font:600 13px/1.25 inherit;cursor:pointer;transition:transform .14s,background .16s}
+button:active{transform:scale(.96)}
+button.on{background:var(--primary);color:var(--primary-fg)}
+button.on small{color:rgba(255,255,255,.82)}
+button.outline{background:transparent;border:1px solid var(--divider);color:var(--txt-2);font-weight:500}
+button.sm{padding:8px 10px;border-radius:11px;font-size:12px}
+button small{display:block;font-size:10.5px;font-weight:400;color:var(--txt-2);margin-top:3px}
+
+/* Miuix Switch */
+.switch{position:relative;width:48px;height:28px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--surface-2);border-radius:999px;transition:.2s;cursor:pointer}
+.slider:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.22)}
+.switch input:checked + .slider{background:var(--primary)}
+.switch input:checked + .slider:before{transform:translateX(20px)}
+
+/* Capsule Slider */
+.cap-wrap{position:relative;height:38px;background:var(--surface-2);border-radius:19px;overflow:hidden;margin:10px 0;display:flex;align-items:center}
+.cap-fill{position:absolute;left:0;top:0;bottom:0;width:50%;background:var(--primary);border-radius:19px;pointer-events:none;transition:width .08s linear}
+.cap-wrap input[type="range"]{position:relative;z-index:2;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.cap-label{position:absolute;z-index:1;left:14px;right:14px;display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;pointer-events:none;mix-blend-mode:difference;color:#fff}
+
+.info-box{background:var(--primary-soft);color:var(--primary);border-radius:14px;padding:10px 12px;font-size:12px;line-height:1.5;margin-top:10px}
+.warn-box{background:var(--warn-soft);color:var(--warn);border-radius:14px;padding:10px 12px;font-size:12px;line-height:1.5;margin-top:10px}
+.app-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,16px);background:var(--surface);color:var(--txt);border:1px solid var(--border);padding:10px 16px;border-radius:999px;font-size:13px;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.22);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:90}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="title-wrap">
+      <h1>VR 多窗口 2D</h1>
+      <div class="sub">PICO 4 Ultra · SukiSU WebUI</div>
+    </div>
+    <div class="top-pills">
+      <span class="pill primary">v1.6.0</span>
+      <span id="patchBadge" class="pill"><span class="dot"></span><span>检测中</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="small-title">
+    <span>运行概览</span>
+    <button id="btnRepatch" class="outline sm" style="padding:4px 10px">重注 XRShell</button>
+  </div>
+  <div class="card hero-card">
+    <div class="stat-grid" style="margin-top:0">
+      <div class="stat-tile">
+        <div class="k">系统补丁</div>
+        <div class="v" id="stPatch">--</div>
+      </div>
+      <div class="stat-tile">
+        <div class="k">当前焦点</div>
+        <div class="v" id="stFocus">--</div>
+      </div>
+      <div class="stat-tile">
+        <div class="k">活跃 2D / 上限</div>
+        <div class="v" id="stActive">--</div>
+      </div>
+    </div>
+    <div class="row-desc" id="topAppDesc" style="margin-top:10px">前台 3D 应用：检测中…</div>
+    <div id="patchHint" class="warn-box" style="display:none">
+      检测到 <code>services.jar</code> 补丁尚未加载到内存。请在 SukiSU Nova 中执行一次「软重启」以激活多窗口补丁。
+    </div>
+  </div>
+
+  <div class="small-title">
+    <span>手柄焦点切换策略</span>
+    <span id="daemonBadge" class="pill">守护检测中</span>
+  </div>
+  <div class="card">
+    <div class="grid2">
+      <button data-fmode="hover">射线指向抢占<small>指向2D即聚焦，移开还游戏</small></button>
+      <button data-fmode="menu">VR 优先<small>仅菜单时可控制</small></button>
+      <button data-fmode="auto">智能自动<small>观影2D / 游戏VR</small></button>
+      <button data-fmode="always2d">2D 常驻<small>随时直接点控</small></button>
+    </div>
+    <div class="info-box" id="focusHint">
+      射线指向抢占：双手柄指向不同目标时以最近活动手柄（移动/按键）为准；裸手追踪暂关闭自动抢占防误触。
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--divider)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div class="row-title">射线切焦延迟（防抖）</div>
+          <div class="row-desc">射线需停留满设定时长才切换焦点，实时生效</div>
+        </div>
+        <span id="delayVal" class="pill primary">250 ms</span>
+      </div>
+      <div class="cap-wrap">
+        <div class="cap-fill" id="delayFill"></div>
+        <div class="cap-label"><span>50 ms</span><span>1000 ms</span></div>
+        <input type="range" id="delaySlider" min="50" max="1000" step="50" value="250">
+      </div>
+      <div class="grid4">
+        <button class="outline sm" data-delay="100">100ms</button>
+        <button class="outline sm" data-delay="250">250ms</button>
+        <button class="outline sm" data-delay="450">450ms</button>
+        <button id="btnApplyDelay" class="on sm">应用</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="small-title"><span>核心窗口补丁</span></div>
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="row-title">VR 游戏内保留多 2D 窗口</div>
+        <div class="row-desc">退出菜单不消失，保持桌面 3002 自由拖动与边角缩放形态</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swEnable" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-title">所有 2D 应用解锁自由缩放比例</div>
+        <div class="row-desc">解除仅限浏览器的宽高比白名单，支持任意拉宽/放大</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swResize" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-title">免菜单直接摇杆调远近</div>
+        <div class="row-desc">抓住 2D 窗口底条推摇杆即刻脱离主屏自由调远近</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swDist" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="small-title">
+    <span>2D 窗口数量上限</span>
+    <span id="maxVal" class="pill primary">6 个</span>
+  </div>
+  <div class="card">
+    <div class="row-desc" style="margin-top:0">实时调节 XRShell 同时渲染的 2D 窗口上限（<code>pvr.xrshell.overlay_panel_count</code>）。</div>
+    <div class="cap-wrap">
+      <div class="cap-fill" id="maxFill"></div>
+      <div class="cap-label"><span>3</span><span>10</span></div>
+      <input type="range" id="maxSlider" min="3" max="10" value="6">
+    </div>
+    <div class="grid4">
+      <button class="outline sm" data-max="3">3 个</button>
+      <button class="outline sm" data-max="5">5 个</button>
+      <button class="outline sm" data-max="8">8 个</button>
+      <button id="btnApplyMax" class="on sm">应用</button>
+    </div>
+  </div>
+
+  <div class="small-title"><span>XRShell 内置扩展（实时生效）</span></div>
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="row-title">显示 2D 窗口底部操作栏</div>
+        <div class="row-desc">关闭后隐藏底部白条与按钮，适合将 2D 窗口作为纯悬浮挂件</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swNearCap" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-title">禁用射线悬停高亮注入</div>
+        <div class="row-desc">减少游玩时射线扫过 2D 窗口触发的悬停提示或高亮干扰</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swNoHover">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="row">
+      <div>
+        <div class="row-title">手势捏合呼出 Home 菜单</div>
+        <div class="row-desc">裸手追玩 VR 游戏时可关闭，防止手势误触呼出系统菜单</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swHandHome" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="small-title">
+    <span>单应用悬浮窗管理</span>
+    <span id="ovCount" class="pill">未扫描</span>
+  </div>
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="row-title">Android 悬浮窗渲染桥接（总开关）</div>
+        <div class="row-desc">将应用创建的 <code>TYPE_APPLICATION_OVERLAY</code> 悬浮窗重定向至当前 2D 虚拟屏显示，可在下方按单个应用独立启停</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="swOvBridge" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="ov-search-row">
+      <input type="text" id="ovSearch" class="mi-input" placeholder="搜索包名，或输入完整包名点右侧管理">
+      <button id="btnOvAddPkg" class="outline sm" style="white-space:nowrap">按包名管理</button>
+    </div>
+
+    <div class="seg" id="ovTabs">
+      <button data-ovtab="decl" class="on">悬浮窗应用</button>
+      <button data-ovtab="allowed">已授权</button>
+      <button data-ovtab="all">所有第三方</button>
+    </div>
+
+    <div class="grid3" style="margin-top:10px">
+      <button id="btnOvScan" class="outline sm">扫描刷新</button>
+      <button id="btnOvGrantAll" class="on sm">一键授权</button>
+      <button id="btnOvRevokeAll" class="outline sm">一键撤销</button>
+    </div>
+
+    <div id="ovList" class="ov-scroll">
+      <div class="row-desc" style="padding:6px 0">点击「扫描刷新」读取应用列表，可对每个应用单独开关「悬浮窗权限」与「VR 虚拟屏桥接」。</div>
+    </div>
+  </div>
+
+  <div class="small-title">
+    <span>当前活跃 2D 窗口</span>
+    <button id="btnRefresh" class="outline sm" style="padding:4px 10px">刷新</button>
+  </div>
+  <div class="card">
+    <div id="appList" class="app-list"><span class="pill">读取中…</span></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const KSU = window.ksu || window.KernelSU;
+const BIN = "/data/adb/modules/pico_vr_multiwindow/system/bin";
+const CONF = "/data/adb/pico_vr_multiwindow/config";
+let toastTimer = null;
+
+const FOCUS_HINTS = {
+  hover: "射线指向抢占：手柄射线指到 2D 窗口即聚焦，移开即还游戏；双手柄指向不同目标时自动以最近活动手柄（移动/按键）为准，裸手追踪暂不触发自动抢占。",
+  menu: "VR 优先（菜单控制）：退出菜单后立刻将手柄焦点交还 VR 游戏，防误触；按 Home 呼出菜单/Dock 即可操作、拖动或缩放所有 2D 窗口。",
+  auto: "智能自动切换：检测到 YouTube VR / PICO 播放器 / 相册 / 桌面时自动切为「2D 常驻」方便随时点控；进入 3D 游戏时自动切为「VR 优先」交还手柄。",
+  always2d: "2D 常驻焦点：无需打开菜单即可随时点击、滚动、拖动 2D 窗口（适合观影、聊天或挂机；游玩需要手柄的 3D 游戏时建议切回射线指向或 VR 优先）。"
+};
+
+function showToast(msg){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+}
+
+function execKsu(cmd){
+  return new Promise(resolve => {
+    if(!KSU || typeof KSU.exec !== "function"){
+      resolve({ errno: -1, stdout: "", stderr: "KSU bridge 不可用" });
+      return;
+    }
+    const cb = "_ksu_mw_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    let done = false;
+    const fin = (errno, stdout, stderr) => {
+      if(done) return;
+      done = true;
+      delete window[cb];
+      resolve({ errno: Number(errno) || 0, stdout: stdout || "", stderr: stderr || "" });
+    };
+    window[cb] = (e, o, err) => fin(e, o, err);
+    try{
+      const r = KSU.exec(cmd, "{}", cb);
+      if(r && typeof r.then === "function"){
+        r.then(x => fin(x?.errno ?? 0, typeof x === "string" ? x : x?.stdout, x?.stderr)).catch(e => fin(-1, "", String(e)));
+      }
+    }catch(e){
+      try{ KSU.exec(cmd, cb); }catch(e2){ fin(-1, "", String(e2)); }
+    }
+    setTimeout(() => fin(-1, "", "timeout"), 8000);
+  });
+}
+
+async function sh(cmd){
+  const r = await execKsu(cmd);
+  return (r.stdout || "") + (r.stderr || "");
+}
+
+function setConf(key, val){
+  return `mkdir -p /data/adb/pico_vr_multiwindow; touch ${CONF}; if grep -q '^${key}=' ${CONF}; then sed -i 's|^${key}=.*|${key}=${val}|' ${CONF}; else echo '${key}=${val}' >> ${CONF}; fi`;
+}
+
+function updateMaxVisual(n){
+  n = Math.max(3, Math.min(10, Number(n) || 6));
+  document.getElementById("maxSlider").value = n;
+  document.getElementById("maxVal").textContent = n + " 个";
+  document.getElementById("maxFill").style.width = (((n - 3) / 7) * 100) + "%";
+}
+
+function updateDelayVisual(ms){
+  ms = Math.max(50, Math.min(1000, Number(ms) || 250));
+  document.getElementById("delaySlider").value = ms;
+  document.getElementById("delayVal").textContent = ms + " ms";
+  document.getElementById("delayFill").style.width = (((ms - 50) / 950) * 100) + "%";
+}
+
+async function refresh(){
+  const out = await sh(`${BIN}/mwctl status 2>&1`);
+  const g = k => (out.match(new RegExp("^" + k + "=([^\\n]*)", "m")) || [])[1] || "";
+
+  const en = g("EN").trim() !== "0";
+  const fr = g("FR").trim() !== "0";
+  const ovBridge = g("OV_BRIDGE").trim() !== "0";
+  const mx = parseInt(g("MX"), 10) || 5;
+  const hdelay = parseInt(g("HOVER_DELAY"), 10) || 250;
+  const fmode = g("FMODE").trim() || "menu";
+  const patched = g("PATCHED").trim() === "1";
+  const dist = g("xrshell_dist_patch").trim() === "1";
+  const focVal = parseInt(g("xrshell_focus_patch").trim(), 10) || 0;
+  const daemonOn = g("DAEMON").trim() === "1";
+  const nearCap = g("NEAR_CAP").trim() !== "0";
+  const noHover = g("NO_HOVER").trim() === "1";
+  const handHome = g("HAND_HOME").trim() !== "0";
+  const topApp = g("TOP_APP").trim() || "未知";
+  const apps = g("APPS").split(",").map(s => s.replace(/^NS_APP\[|\]$/g, "").trim()).filter(Boolean);
+
+  document.getElementById("swEnable").checked = en;
+  document.getElementById("swResize").checked = fr;
+  document.getElementById("swDist").checked = dist;
+  document.getElementById("swOvBridge").checked = ovBridge;
+  document.getElementById("swNearCap").checked = nearCap;
+  document.getElementById("swNoHover").checked = noHover;
+  document.getElementById("swHandHome").checked = handHome;
+  updateMaxVisual(mx);
+  updateDelayVisual(hdelay);
+
+  document.querySelectorAll("[data-fmode]").forEach(b => {
+    b.classList.toggle("on", b.dataset.fmode === fmode);
+  });
+  document.getElementById("focusHint").textContent = FOCUS_HINTS[fmode] || FOCUS_HINTS.menu;
+
+  document.getElementById("stPatch").textContent = patched ? "已挂载" : "待软重启";
+  document.getElementById("stPatch").style.color = patched ? "var(--ok)" : "var(--warn)";
+  const focMap = { 2: ["射线指向", "var(--primary)"], 1: ["VR 优先", "var(--primary)"], 0: ["2D 优先", "var(--ok)"] };
+  const [focTxt, focClr] = focMap[focVal] || focMap[0];
+  document.getElementById("stFocus").textContent = focTxt;
+  document.getElementById("stFocus").style.color = focClr;
+  document.getElementById("stActive").textContent = `${apps.length} / ${mx}`;
+  document.getElementById("topAppDesc").textContent = `当前前台 3D 应用：${topApp}`;
+  document.getElementById("patchHint").style.display = patched ? "none" : "block";
+
+  const pb = document.getElementById("patchBadge");
+  pb.className = "pill " + (patched && en ? "ok" : "warn");
+  pb.innerHTML = `<span class="dot"></span><span>${patched ? (en ? "已启用" : "已暂停") : "待软重启"}</span>`;
+
+  const db = document.getElementById("daemonBadge");
+  db.className = "pill " + (daemonOn ? "ok" : "warn");
+  db.textContent = daemonOn ? "守护运行中" : "守护未运行";
+
+  const listEl = document.getElementById("appList");
+  listEl.innerHTML = apps.length
+    ? apps.map(a => `<span class="pill primary">${a}</span>`).join("")
+    : '<span class="pill">当前无活跃 2D 应用窗口</span>';
+}
+
+document.querySelectorAll("[data-fmode]").forEach(b => {
+  b.onclick = async () => {
+    const m = b.dataset.fmode;
+    await sh(`${BIN}/mwctl focus ${m}`);
+    const labels = { hover: "射线指向抢占", menu: "VR 优先（菜单控制）", auto: "智能自动切换", always2d: "2D 常驻焦点" };
+    showToast("已切换焦点模式：" + (labels[m] || m));
+    setTimeout(refresh, 300);
+  };
+});
+
+document.getElementById("swOvBridge").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`settings put global pico_vr_overlay_bridge ${v}; ${setConf("OV_BRIDGE", v)}`);
+  showToast(v ? "已开启悬浮窗虚拟屏渲染桥接" : "已关闭悬浮窗渲染桥接");
+  refresh();
+};
+
+let ovRows = [];
+let ovTab = "decl";
+
+function renderOverlays(){
+  const listEl = document.getElementById("ovList");
+  const cntEl = document.getElementById("ovCount");
+  const q = (document.getElementById("ovSearch").value || "").trim().toLowerCase();
+  const filtered = ovRows.filter(r => {
+    if(ovTab === "allowed" && r.mode !== "allow") return false;
+    if(q && !r.pkg.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  cntEl.textContent = `${filtered.length} / ${ovRows.length} 个`;
+  if(!filtered.length){
+    listEl.innerHTML = '<div class="row-desc" style="padding:8px 0">当前筛选下无匹配应用。可切换标签、点击「扫描刷新」，或输入完整包名点击「按包名管理」。</div>';
+    return;
+  }
+  listEl.innerHTML = filtered.map(r => {
+    const permOn = r.mode === "allow";
+    const brOn = r.bridge !== "0";
+    return `<div class="ov-item" data-pkg="${r.pkg}">
+      <div class="ov-pkg">${r.pkg}</div>
+      <div class="ov-state">
+        <span class="ov-pbadge">${permOn ? "权限：已授权" : "权限：未授权 (" + (r.mode || "default") + ")"}</span>
+        <span>·</span>
+        <span class="ov-bbadge">${brOn ? "虚拟屏桥接：开启" : "虚拟屏桥接：已单独禁用"}</span>
+      </div>
+      <div class="ov-ctrls">
+        <div class="ov-ctrl-pill">
+          <span>悬浮窗权限</span>
+          <label class="switch sm">
+            <input type="checkbox" data-ovperm="${r.pkg}" ${permOn ? "checked" : ""}>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="ov-ctrl-pill">
+          <span>虚拟屏桥接</span>
+          <label class="switch sm">
+            <input type="checkbox" data-ovbr="${r.pkg}" ${brOn ? "checked" : ""}>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  listEl.querySelectorAll("input[data-ovperm]").forEach(inp => {
+    inp.onchange = async function(){
+      const pkg = this.dataset.ovperm;
+      const mode = this.checked ? "allow" : "default";
+      await sh(`${BIN}/mwctl overlay_set "${pkg}" ${mode}`);
+      const row = ovRows.find(x => x.pkg === pkg);
+      if(row) row.mode = mode;
+      const badge = this.closest(".ov-item").querySelector(".ov-pbadge");
+      if(badge) badge.textContent = mode === "allow" ? "权限：已授权" : "权限：未授权 (default)";
+      showToast(`${pkg}：${mode === "allow" ? "已授予" : "已撤销"}悬浮窗权限`);
+    };
+  });
+  listEl.querySelectorAll("input[data-ovbr]").forEach(inp => {
+    inp.onchange = async function(){
+      const pkg = this.dataset.ovbr;
+      const on = this.checked ? "1" : "0";
+      await sh(`${BIN}/mwctl overlay_bridge "${pkg}" ${on}`);
+      const row = ovRows.find(x => x.pkg === pkg);
+      if(row) row.bridge = on;
+      const badge = this.closest(".ov-item").querySelector(".ov-bbadge");
+      if(badge) badge.textContent = on === "1" ? "虚拟屏桥接：开启" : "虚拟屏桥接：已单独禁用";
+      showToast(`${pkg}：${on === "1" ? "已开启" : "已禁用"}虚拟屏桥接`);
+    };
+  });
+}
+
+async function scanOverlays(scope){
+  const listEl = document.getElementById("ovList");
+  const cntEl = document.getElementById("ovCount");
+  const sc = scope || (ovTab === "all" ? "all" : "decl");
+  cntEl.textContent = "扫描中…";
+  listEl.innerHTML = `<div class="row-desc" style="padding:8px 0">正在扫描${sc === "all" ? "所有第三方应用" : "声明 SYSTEM_ALERT_WINDOW 的第三方应用"}…</div>`;
+  const out = await sh(`${BIN}/mwctl overlay_list ${sc} 2>&1`);
+  ovRows = out.split("\n").map(l => l.trim()).filter(l => l.includes("|")).map(l => {
+    const [pkg, mode, bridge] = l.split("|");
+    return { pkg: pkg.trim(), mode: (mode || "default").trim(), bridge: (bridge || "1").trim() };
+  });
+  renderOverlays();
+}
+
+document.querySelectorAll("#ovTabs button").forEach(b => {
+  b.onclick = () => {
+    const next = b.dataset.ovtab;
+    const needRescan = (next === "all" && ovTab !== "all") || (next !== "all" && ovTab === "all") || !ovRows.length;
+    ovTab = next;
+    document.querySelectorAll("#ovTabs button").forEach(x => x.classList.toggle("on", x.dataset.ovtab === ovTab));
+    if(needRescan) scanOverlays(ovTab === "all" ? "all" : "decl");
+    else renderOverlays();
+  };
+});
+
+document.getElementById("ovSearch").oninput = () => renderOverlays();
+
+document.getElementById("btnOvAddPkg").onclick = async () => {
+  const pkg = (document.getElementById("ovSearch").value || "").trim();
+  if(!pkg || !pkg.includes(".")){
+    showToast("请输入完整包名（如 com.example.app）");
+    return;
+  }
+  const stOut = await sh(`appops get "${pkg}" SYSTEM_ALERT_WINDOW 2>/dev/null | grep -oE 'allow|ignore|deny|default' | head -1`);
+  const denyOut = await sh(`settings get global pico_vr_overlay_bridge_deny 2>/dev/null`);
+  const mode = (stOut || "").trim() || "default";
+  const br = denyOut.includes(`,${pkg},`) ? "0" : "1";
+  const idx = ovRows.findIndex(x => x.pkg === pkg);
+  if(idx >= 0) ovRows[idx] = { pkg, mode, bridge: br };
+  else ovRows.unshift({ pkg, mode, bridge: br });
+  renderOverlays();
+  showToast(`已载入 ${pkg}，可直接开关权限与桥接`);
+};
+
+document.getElementById("btnOvScan").onclick = () => scanOverlays(ovTab === "all" ? "all" : "decl");
+document.getElementById("btnOvGrantAll").onclick = async () => {
+  showToast("正在批量授予悬浮窗权限…");
+  await sh(`${BIN}/mwctl overlay_grant_all`);
+  showToast("已全部授予悬浮窗权限");
+  scanOverlays(ovTab === "all" ? "all" : "decl");
+};
+document.getElementById("btnOvRevokeAll").onclick = async () => {
+  showToast("正在批量撤销悬浮窗权限…");
+  await sh(`${BIN}/mwctl overlay_revoke_all`);
+  showToast("已批量撤销悬浮窗权限");
+  scanOverlays(ovTab === "all" ? "all" : "decl");
+};
+
+document.getElementById("swEnable").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`settings put global pico_vr_multiwindow ${v}; ${setConf("ENABLED", v)}`);
+  showToast(v ? "已开启：VR 游戏内保留多 2D 窗口" : "已关闭：恢复原厂策略");
+  refresh();
+};
+
+document.getElementById("swResize").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`settings put global pico_vr_force_resize ${v}; ${setConf("FORCE_RESIZE", v)}`);
+  showToast(v ? "已解锁所有 2D 应用自由缩放比例" : "已恢复原厂缩放白名单");
+  refresh();
+};
+
+document.getElementById("swDist").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`${BIN}/mwctl dist ${v}`);
+  showToast(v ? "已启用免菜单摇杆调远近" : "已恢复原厂远近调节逻辑");
+  refresh();
+};
+
+document.getElementById("swNearCap").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`settings put system pvr.app.data.near_captionbar_enable ${v}`);
+  showToast(v ? "已显示 2D 窗口底部操作栏" : "已隐藏 2D 窗口底部操作栏");
+  refresh();
+};
+
+document.getElementById("swNoHover").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`settings put global pvr.disable.inject.hover ${v}`);
+  showToast(v ? "已禁用射线悬停高亮注入" : "已恢复射线悬停高亮");
+  refresh();
+};
+
+document.getElementById("swHandHome").onchange = async function(){
+  const v = this.checked ? 1 : 0;
+  await sh(`settings put system pvr.app.data.hand_home_enable ${v}`);
+  showToast(v ? "已开启手势捏合呼出 Home" : "已关闭手势捏合呼出 Home");
+  refresh();
+};
+
+document.getElementById("delaySlider").oninput = function(){ updateDelayVisual(this.value); };
+
+async function applyDelay(ms){
+  ms = Math.max(50, Math.min(1000, Number(ms) || 250));
+  updateDelayVisual(ms);
+  await sh(`${BIN}/mwctl hover_delay ${ms}`);
+  showToast(`射线切焦延迟已设为 ${ms} ms`);
+  refresh();
+}
+
+document.getElementById("btnApplyDelay").onclick = () => applyDelay(document.getElementById("delaySlider").value);
+document.querySelectorAll("[data-delay]").forEach(b => { b.onclick = () => applyDelay(b.dataset.delay); });
+
+document.getElementById("maxSlider").oninput = function(){ updateMaxVisual(this.value); };
+
+async function applyMax(n){
+  n = Math.max(3, Math.min(10, Number(n) || 6));
+  updateMaxVisual(n);
+  await sh(`settings put system pvr.xrshell.overlay_panel_count ${n}; ${setConf("MAX_PANELS", n)}`);
+  showToast(`2D 窗口上限已设为 ${n} 个`);
+  refresh();
+}
+
+document.getElementById("btnApplyMax").onclick = () => applyMax(document.getElementById("maxSlider").value);
+document.querySelectorAll("[data-max]").forEach(b => { b.onclick = () => applyMax(b.dataset.max); });
+document.getElementById("btnRepatch").onclick = async () => {
+  await sh(`${BIN}/mwctl repatch`);
+  showToast("已重新注入 XRShell 补丁并启动守护");
+  setTimeout(refresh, 300);
+};
+document.getElementById("btnRefresh").onclick = () => { refresh(); showToast("已刷新"); };
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
