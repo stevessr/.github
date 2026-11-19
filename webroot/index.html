@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PICO 2D 窗口缩放与距离控制</title>
+<style>
+  :root { --bg:#0f1117; --card:#1a1e29; --border:#2a3142; --text:#e6edf3; --muted:#8b949e; --accent:#4c8dff; --ok:#3fb950; --warn:#d29922; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  h1 { font-size:18px; margin:0 0 12px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; justify-content:space-between; align-items:center; margin:6px 0; font-size:14px; }
+  .muted { color:var(--muted); font-size:12px; }
+  .badge { padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; background:#263044; }
+  .badge.ok { background:#183324; color:var(--ok); }
+  .badge.warn { background:#352911; color:var(--warn); }
+  .presets { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  button { background:#232a3b; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button:active { opacity:0.85; }
+  label { display:block; font-size:13px; margin:10px 0 4px; }
+  input[type=range] { width:100%; }
+  .actions { display:flex; gap:8px; margin-top:12px; }
+  .actions button { flex:1; }
+  #msg { margin-top:8px; font-size:12px; color:var(--muted); min-height:16px; }
+</style>
+</head>
+<body>
+  <h1>PICO 2D 窗口缩放与距离控制</h1>
+
+  <div class="card">
+    <div class="row"><span>XRShell 状态</span><span id="st-pid" class="badge">检测中...</span></div>
+    <div class="row"><span>最大推送距离</span><span id="st-dist">-</span></div>
+    <div class="row"><span>最大窗口尺寸</span><span id="st-size">-</span></div>
+    <div class="row"><span>相机远裁面</span><span id="st-far">-</span></div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;font-size:14px;">快捷预设</div>
+    <div class="presets">
+      <button onclick="applyPreset('default')">推荐 (60m / 4x)</button>
+      <button onclick="applyPreset('cinema')">巨幕影院 (100m / 8K)</button>
+      <button onclick="applyPreset('extreme')">极限 (200m / 6x)</button>
+      <button onclick="applyPreset('stock')">还原原厂 (12m / 1.5x)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:600;font-size:14px;">自定义参数</div>
+    <label>最大推送距离: <b id="lbl-dist">60</b> 米 <span class="muted">(原厂 12m)</span></label>
+    <input id="rng-dist" type="range" min="12" max="200" step="2" value="60" oninput="syncLabels()" />
+
+    <label>最大缩放倍率: <b id="lbl-scale">4.0</b>x (<span id="lbl-wh">6400 × 3600</span>) <span class="muted">(原厂 1.5x)</span></label>
+    <input id="rng-scale" type="range" min="1.5" max="6.0" step="0.5" value="4.0" oninput="syncLabels()" />
+
+    <div class="actions">
+      <button class="primary" onclick="applyCustom()">应用并立即生效</button>
+      <button onclick="refresh()">刷新状态</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+<script>
+const CTL = "/data/adb/modules/pico_window_scale_dist/system/bin/winctl";
+
+function execShell(cmd) {
+  return new Promise((resolve, reject) => {
+    if (typeof ksu !== "undefined" && typeof ksu.exec === "function") {
+      const cb = "cb_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+      window[cb] = (errno, stdout, stderr) => {
+        delete window[cb];
+        resolve({ errno, stdout: stdout || "", stderr: stderr || "" });
+      };
+      ksu.exec(cmd, "{}", cb);
+    } else {
+      reject(new Error("请在 SukiSU / KernelSU WebUI 中打开"));
+    }
+  });
+}
+
+function parseKV(text) {
+  const map = {};
+  text.split(/\r?\n/).forEach(line => {
+    const idx = line.indexOf("=");
+    if (idx > 0) map[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+  });
+  return map;
+}
+
+function syncLabels() {
+  const d = document.getElementById("rng-dist").value;
+  const s = parseFloat(document.getElementById("rng-scale").value);
+  const w = Math.round(1600 * s);
+  const h = Math.round(900 * s);
+  document.getElementById("lbl-dist").textContent = d;
+  document.getElementById("lbl-scale").textContent = s.toFixed(1);
+  document.getElementById("lbl-wh").textContent = w + " × " + h;
+}
+
+async function refresh() {
+  try {
+    const res = await execShell("sh " + CTL + " status");
+    const kv = parseKV(res.stdout);
+    const pidEl = document.getElementById("st-pid");
+    if (kv.xrshell_pid) {
+      pidEl.textContent = "运行中 (PID " + kv.xrshell_pid + ")";
+      pidEl.className = "badge ok";
+    } else {
+      pidEl.textContent = "未运行";
+      pidEl.className = "badge warn";
+    }
+    document.getElementById("st-dist").textContent = (kv.max_free_dist || "-") + " m (屏幕半径 " + (kv.max_screen_radius || "-") + " m)";
+    document.getElementById("st-size").textContent = (kv.max_scale_w || "-") + " × " + (kv.max_scale_h || "-");
+    document.getElementById("st-far").textContent = (kv.far_plane || "-") + " m";
+    if (kv.config_max_dist) document.getElementById("rng-dist").value = kv.config_max_dist;
+    if (kv.config_max_w) {
+      const s = Math.max(1.5, Math.min(6.0, Math.round((parseInt(kv.config_max_w, 10) / 1600) * 2) / 2));
+      document.getElementById("rng-scale").value = s;
+    }
+    syncLabels();
+  } catch (e) {
+    document.getElementById("msg").textContent = e.message;
+  }
+}
+
+async function applyPreset(name) {
+  document.getElementById("msg").textContent = "正在应用预设...";
+  await execShell("sh " + CTL + " preset " + name);
+  await refresh();
+  document.getElementById("msg").textContent = "已生效！";
+}
+
+async function applyCustom() {
+  const d = document.getElementById("rng-dist").value;
+  const s = parseFloat(document.getElementById("rng-scale").value);
+  const w = Math.round(1600 * s);
+  const h = Math.round(900 * s);
+  document.getElementById("msg").textContent = "正在写入 XRShell 内存...";
+  await execShell("sh " + CTL + " set " + d + " " + w + " " + h);
+  await refresh();
+  document.getElementById("msg").textContent = "已生效！";
+}
+
+syncLabels();
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+id=pico_window_scale_dist
+name=PICO 2D Window Scale & Distance
+version=v1.0.0
+versionCode=10000
+author=stevessr
+description=PICO 4 Ultra 2D 应用窗口更大缩放与更远推送模块（支持临时 Root 即时生效）：突破原厂 2400x1350 缩放上限与 12m 推送距离上限，扩展相机远裁面至 1000m，内置 SukiSU WebUI 实时调节。

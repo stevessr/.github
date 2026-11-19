@@ -1,0 +1,24 @@
+#!/sbin/sh
+#################
+# Initialization
+#################
+umask 022
+ui_print() { echo "$1"; }
+OUTFD=$2
+ZIPFILE=$3
+
+mount /data 2>/dev/null
+[ -f /data/adb/ksu/bin/busybox ] && export PATH="/data/adb/ksu/bin:$PATH"
+
+ui_print "- Extracting module files..."
+MODID=pico_vst_camera
+MODPATH="/data/adb/modules_update/$MODID"
+rm -rf "$MODPATH"
+mkdir -p "$MODPATH"
+unzip -o "$ZIPFILE" -d "$MODPATH" >&2
+
+chmod 755 "$MODPATH/customize.sh" 2>/dev/null
+[ -f "$MODPATH/customize.sh" ] && . "$MODPATH/customize.sh"
+
+ui_print "- Done"
+exit 0

@@ -1,0 +1,101 @@
+#!/system/bin/sh
+MODDIR=${0%/*}
+[ "${MODDIR##*/}" = "bin" ] && MODDIR=${MODDIR%/system/bin}
+BIN="$MODDIR/system/bin/winscale_patch"
+CONF_DIR="/data/adb/pico_window_scale_dist"
+CONF="$CONF_DIR/config.env"
+
+mkdir -p "$CONF_DIR"
+if [ ! -f "$CONF" ]; then
+  cat > "$CONF" <<'EOF'
+ENABLED=1
+MAX_DIST=60
+MAX_W=6400
+MAX_H=3600
+EOF
+fi
+
+load_conf() {
+  ENABLED=1
+  MAX_DIST=60
+  MAX_W=6400
+  MAX_H=3600
+  [ -f "$CONF" ] && . "$CONF"
+}
+
+save_conf() {
+  cat > "$CONF" <<EOF
+ENABLED=$1
+MAX_DIST=$2
+MAX_W=$3
+MAX_H=$4
+EOF
+}
+
+get_pid() {
+  pidof com.picoxr.xrshell 2>/dev/null | awk '{print $1}'
+}
+
+cmd="$1"
+case "$cmd" in
+  status)
+    load_conf
+    echo "config_enabled=$ENABLED"
+    echo "config_max_dist=$MAX_DIST"
+    echo "config_max_w=$MAX_W"
+    echo "config_max_h=$MAX_H"
+    PID=$(get_pid)
+    if [ -n "$PID" ] && [ -x "$BIN" ]; then
+      echo "xrshell_pid=$PID"
+      "$BIN" "$PID" status
+    else
+      echo "xrshell_pid="
+      echo "error=xrshell_not_running"
+    fi
+    ;;
+  apply)
+    load_conf
+    PID=$(get_pid)
+    [ -z "$PID" ] && { echo "error=xrshell_not_running"; exit 1; }
+    if [ "$ENABLED" = "1" ]; then
+      "$BIN" "$PID" apply "$MAX_DIST" "$MAX_W" "$MAX_H"
+    else
+      "$BIN" "$PID" reset
+    fi
+    ;;
+  set)
+    D="${2:-60}"
+    W="${3:-6400}"
+    H="${4:-3600}"
+    save_conf 1 "$D" "$W" "$H"
+    PID=$(get_pid)
+    [ -n "$PID" ] && "$BIN" "$PID" apply "$D" "$W" "$H"
+    ;;
+  preset)
+    case "$2" in
+      default) save_conf 1 60 6400 3600 ;;
+      cinema)  save_conf 1 100 7680 4320 ;;
+      extreme) save_conf 1 200 9600 5400 ;;
+      stock)   save_conf 0 12 2400 1350 ;;
+      *) echo "unknown preset: $2"; exit 2 ;;
+    esac
+    load_conf
+    PID=$(get_pid)
+    if [ -n "$PID" ]; then
+      if [ "$ENABLED" = "1" ]; then
+        "$BIN" "$PID" apply "$MAX_DIST" "$MAX_W" "$MAX_H"
+      else
+        "$BIN" "$PID" reset
+      fi
+    fi
+    ;;
+  reset)
+    save_conf 0 12 2400 1350
+    PID=$(get_pid)
+    [ -n "$PID" ] && "$BIN" "$PID" reset
+    ;;
+  *)
+    echo "usage: $0 {status|apply|set <dist> <w> <h>|preset <default|cinema|extreme|stock>|reset}"
+    exit 2
+    ;;
+esac
