@@ -4,6 +4,7 @@ CONF=/data/adb/pico_fps/config
 BIN=/data/adb/modules/pico_fps_control/system/bin
 PXRFPS=$BIN/pxrfps
 PATCH=$BIN/fpspatch.sh
+THERMAL=$BIN/thermalctl.sh
 
 get_conf() { [ -f "$CONF" ] && grep "^$1=" "$CONF" 2>/dev/null | cut -d= -f2 || echo "$2"; }
 set_conf() {
@@ -32,30 +33,43 @@ case "$1" in
   auto)  set_conf MODE auto;  echo "auto mode" ;;
   default)
     set_conf MODE default
+    [ -f "$CONF" ] && sed -i '/^FAN=/d' "$CONF"
+    sh "$THERMAL" restore >/dev/null 2>&1
     sh "$PATCH" restore >/dev/null 2>&1
-    echo "遵从系统默认（已移除全部补丁，不干预帧率）" ;;
+    echo "遵从系统默认（已移除全部补丁与温控覆盖）" ;;
   curve) set_conf MODE curve; echo "curve mode" ;;
-  off)   set_conf MODE off; sh "$PATCH" restore; $PXRFPS 72 >/dev/null 2>&1; echo "off (72fps)" ;;
+  off)   set_conf MODE off; [ -f "$CONF" ] && sed -i '/^FAN=/d' "$CONF"; sh "$THERMAL" restore >/dev/null 2>&1; sh "$PATCH" restore; $PXRFPS 72 >/dev/null 2>&1; echo "off (72fps)" ;;
   status)
     echo "mode=$(get_conf MODE auto)"
     echo "target=$(get_conf FPS 72)"
     echo "current=$($PXRFPS 0 read 2>/dev/null | grep -oE 'val=[0-9.]+' | head -1 | cut -d= -f2)"
     T=$(cat /sys/class/thermal/thermal_zone17/temp 2>/dev/null || echo 0)
     echo "gpu_temp=$((T/1000))"
-    su -c 'dumpsys SurfaceFlinger' 2>/dev/null | grep -oE 'activeMode=[0-9.]+ Hz' | head -1
+    sh "$THERMAL" status
+    if [ "$(id -u 2>/dev/null)" = "0" ]; then
+      dumpsys SurfaceFlinger 2>/dev/null | grep -oE 'activeMode=[0-9.]+ Hz' | head -1
+    else
+      su -c 'dumpsys SurfaceFlinger' 2>/dev/null | grep -oE 'activeMode=[0-9.]+ Hz' | head -1
+    fi
     ;;
   fan)
     F="$2"; [ -z "$F" ] && F=100
-    su -c "service call PicoStation-new 121 i32 $F" >/dev/null 2>&1
-    echo "fan=$F%  (注意：档位验证不充分，参考狂暴模式)"
+    sh "$THERMAL" override >/dev/null 2>&1
+    service call PicoStation-new 121 i32 "$F" >/dev/null 2>&1
+    set_conf FAN "$F"
+    echo "fan=$F%"
     ;;
   berserk)
-    # 狂暴：风扇 100% + fps 90
-    su -c "service call PicoStation-new 121 i32 100" >/dev/null 2>&1
+    # 狂暴：覆盖温控服务 + 风扇 100% + fps 90
+    sh "$THERMAL" override >/dev/null 2>&1
+    service call PicoStation-new 121 i32 100 >/dev/null 2>&1
     sh "$PATCH" force90 >/dev/null 2>&1
     $PXRFPS 90 >/dev/null 2>&1
     set_conf MODE fixed; set_conf FPS 90; set_conf FAN 100
-    echo "狂暴模式：风扇 100% + 90fps"
+    echo "狂暴模式：温控已接管 + 风扇 100% + 90fps"
+    ;;
+  thermal)
+    sh "$THERMAL" "$2"
     ;;
   autofan)
     # 风扇跟随温度：狂暴曲线

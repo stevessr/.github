@@ -13,7 +13,7 @@ trap 'echo "[$(date +%H:%M:%S)] fpsd exiting $" >> "$LOG"; exit 0' TERM INT HUP
 log "fpsd v1.1 started pid=$"
 
 VIDEO_PKGS="com.google.android.apps.youtube.vr.pico tv.danmaku.bili com.picovr.player"
-last_patch=0; last_fg=0; last_temp=0; fg_pkg=""; target=72; applied_patch=""
+last_patch=0; last_fg=0; last_temp=0; last_fan=0; fg_pkg=""; target=72; applied_patch=""
 
 gpu_temp() {
   local t
@@ -87,11 +87,19 @@ while true; do
     log "patch=$NEED (target=$target mode=$MODE)"
   fi
 
-  # 3.5) 风扇跟随温度（FANFOLLOW=1 且 FAN=100 时全速）
-  if [ "$MODE" = "curve" ] && [ "$target" -ge 90 ]; then
-    su -c "service call PicoStation-new 121 i32 100" >/dev/null 2>&1
-  elif [ "$MODE" = "curve" ] && [ "$target" -le 60 ]; then
-    su -c "service call PicoStation-new 121 i32 40" >/dev/null 2>&1
+  # 3.5) 风扇维持 / 跟随温度
+  FAN=$(grep '^FAN=' "$CONF" 2>/dev/null | cut -d= -f2)
+  if [ -n "$FAN" ] && [ "$MODE" != "off" ] && [ "$MODE" != "default" ]; then
+    if [ $((NOW - last_fan)) -ge 2 ]; then
+      service call PicoStation-new 121 i32 "$FAN" >/dev/null 2>&1
+      last_fan=$NOW
+    fi
+  elif [ "$MODE" = "curve" ]; then
+    if [ "$target" -ge 90 ]; then
+      service call PicoStation-new 121 i32 100 >/dev/null 2>&1
+    elif [ "$target" -le 60 ]; then
+      service call PicoStation-new 121 i32 40 >/dev/null 2>&1
+    fi
   fi
 
   # 4) 应用

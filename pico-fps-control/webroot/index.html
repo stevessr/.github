@@ -5,307 +5,924 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>PICO 帧率控制</title>
 <style>
-:root{--bg:#0f1115;--card:#181b21;--card2:#1f232b;--txt:#e8eaed;--sub:#9aa0a6;--acc:#8ab4f8;--ok:#81c995;--warn:#fdd663;--err:#f28b82}
+:root{
+  --bg:#f7f7f7;
+  --surface:#ffffff;
+  --surface-2:#f0f0f3;
+  --surface-3:#e6e6eb;
+  --txt:#141416;
+  --txt-2:#6e6e73;
+  --txt-3:#9a9aa0;
+  --divider:rgba(0,0,0,.06);
+  --border:rgba(0,0,0,.05);
+  --primary:#3482ff;
+  --primary-fg:#ffffff;
+  --primary-soft:rgba(52,130,255,.12);
+  --ok:#24b457;
+  --ok-soft:rgba(36,180,87,.12);
+  --warn:#e59200;
+  --warn-soft:rgba(229,146,0,.13);
+  --danger:#e53935;
+  --danger-soft:rgba(229,57,53,.11);
+  --topbar:rgba(247,247,247,.82);
+  --log-bg:#f2f3f6;
+  --log-txt:#2c2d33;
+  --shadow:0 2px 12px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#000000;
+    --surface:#1c1c1e;
+    --surface-2:#262629;
+    --surface-3:#313136;
+    --txt:#f5f5f7;
+    --txt-2:#8e8e93;
+    --txt-3:#636366;
+    --divider:rgba(255,255,255,.08);
+    --border:rgba(255,255,255,.06);
+    --primary:#3482ff;
+    --primary-fg:#ffffff;
+    --primary-soft:rgba(52,130,255,.18);
+    --ok:#30d158;
+    --ok-soft:rgba(48,209,88,.16);
+    --warn:#ff9f0a;
+    --warn-soft:rgba(255,159,10,.16);
+    --danger:#ff453a;
+    --danger-soft:rgba(255,69,58,.16);
+    --topbar:rgba(0,0,0,.78);
+    --log-bg:#121214;
+    --log-txt:#c7c7cc;
+    --shadow:none;
+  }
+}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{margin:0;padding:16px;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-h1{font-size:20px;margin:0 0 4px}
-.sub{color:var(--sub);font-size:13px;margin-bottom:16px}
-.card{background:var(--card);border-radius:16px;padding:16px;margin-bottom:12px}
-.card h2{font-size:14px;color:var(--sub);font-weight:500;margin:0 0 12px;text-transform:uppercase;letter-spacing:.5px}
-.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #23262d}
-.row:last-child{border-bottom:none}
-.row .k{color:var(--sub)}
-.row .v{font-weight:600;font-variant-numeric:tabular-nums}
-.big{font-size:34px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
-.btns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
-button{background:var(--card2);color:var(--txt);border:none;border-radius:12px;padding:14px 8px;font-size:15px;font-weight:600;cursor:pointer;transition:.15s}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font:14px/1.45 -apple-system,BlinkMacSystemFont,"MiSans","SF Pro Text","Segoe UI",Roboto,sans-serif}
+body{padding-bottom:calc(36px + env(safe-area-inset-bottom))}
+
+/* Miuix TopAppBar */
+.topbar{
+  position:sticky;
+  top:0;
+  z-index:40;
+  background:var(--topbar);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--divider);
+}
+.topbar-inner{
+  max-width:640px;
+  margin:0 auto;
+  padding:14px 18px 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.title-wrap h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.2}
+.title-wrap .sub{font-size:12px;color:var(--txt-2);margin-top:2px}
+.top-pills{display:flex;align-items:center;gap:6px;flex-shrink:0}
+
+.wrap{max-width:640px;margin:0 auto;padding:12px 14px 0}
+
+/* Miuix SmallTitle */
+.small-title{
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--txt-2);
+  padding:14px 14px 7px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.small-title:first-child{padding-top:4px}
+
+/* Miuix Card */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px;
+  box-shadow:var(--shadow);
+}
+.card.list{padding:2px 16px}
+.hero-card{
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(120% 90% at 95% 5%, var(--primary-soft), transparent 60%),
+    var(--surface);
+}
+.hero-top{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--divider);
+}
+.hero-fps{
+  font-size:42px;
+  font-weight:800;
+  letter-spacing:-1px;
+  line-height:1;
+  color:var(--primary);
+  font-variant-numeric:tabular-nums;
+}
+.hero-fps span.unit{font-size:15px;font-weight:600;color:var(--txt-2);margin-left:4px;letter-spacing:0}
+.hero-meta{text-align:right}
+.hero-mode{font-size:15px;font-weight:700}
+.hero-time{font-size:11.5px;color:var(--txt-2);margin-top:2px}
+
+.stat-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin-top:12px;
+}
+.stat-tile{
+  background:var(--surface-2);
+  border-radius:12px;
+  padding:9px 10px;
+}
+.stat-tile .k{font-size:11px;color:var(--txt-2);margin-bottom:2px}
+.stat-tile .v{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* Pill / Badge */
+.pill{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:11.5px;
+  font-weight:600;
+  background:var(--surface-2);
+  color:var(--txt-2);
+}
+.pill.primary{background:var(--primary-soft);color:var(--primary)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.danger{background:var(--danger-soft);color:var(--danger)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dot.pulse{animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
+
+/* Miuix Segmented / Squircle Buttons */
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+
+button{
+  appearance:none;
+  border:none;
+  background:var(--surface-2);
+  color:var(--txt);
+  border-radius:14px;
+  padding:12px 10px;
+  font:600 14px/1.25 inherit;
+  cursor:pointer;
+  transition:transform .14s cubic-bezier(.2,.8,.2,1),background .16s,color .16s,opacity .16s;
+}
 button:active{transform:scale(.96)}
-button.on{background:var(--acc);color:#0f1115}
-button.wide{grid-column:span 3}
-button.ghost{background:transparent;border:1px solid #33383f;color:var(--sub);font-weight:500;padding:10px}
-input,textarea{width:100%;background:var(--card2);border:1px solid #2b3038;border-radius:10px;color:var(--txt);padding:12px;font-size:14px;font-family:ui-monospace,monospace}
-textarea{resize:vertical;min-height:64px}
-.hint{color:var(--sub);font-size:12px;margin-top:8px;line-height:1.6}
-#log{background:#0b0d10;border-radius:10px;padding:12px;font:12px/1.5 ui-monospace,monospace;color:#bdc1c6;max-height:220px;overflow:auto;white-space:pre-wrap}
-.tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:12px;background:#2b3038;color:var(--sub)}
-.tag.ok{background:rgba(129,201,149,.15);color:var(--ok)}
-.tag.warn{background:rgba(253,214,99,.15);color:var(--warn)}
-.spin{display:inline-block;width:12px;height:12px;border:2px solid #333;border-top-color:var(--acc);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:6px}
-@keyframes s{to{transform:rotate(360deg)}}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.on{
+  background:var(--primary);
+  color:var(--primary-fg);
+}
+button.on small{color:rgba(255,255,255,.82)}
+button.danger-btn{background:var(--danger-soft);color:var(--danger)}
+button.ok-btn{background:var(--ok-soft);color:var(--ok)}
+button.outline{background:transparent;border:1px solid var(--divider);color:var(--txt-2);font-weight:500;padding:10px}
+button.sm{padding:7px 12px;border-radius:10px;font-size:12.5px}
+button small{display:block;font-size:11px;font-weight:400;color:var(--txt-2);margin-top:2px}
+
+/* Miuix List Row */
+.row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:13px 0;
+  border-bottom:1px solid var(--divider);
+}
+.row:last-child{border-bottom:none}
+.row-title{font-size:14.5px;font-weight:600}
+.row-desc{font-size:12px;color:var(--txt-2);margin-top:2px}
+
+/* Miuix HyperOS Capsule Slider */
+.fan-slider-wrap{
+  position:relative;
+  height:38px;
+  background:var(--surface-2);
+  border-radius:19px;
+  overflow:hidden;
+  margin:10px 0;
+  display:flex;
+  align-items:center;
+}
+.fan-fill{
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:50%;
+  background:var(--primary);
+  border-radius:19px;
+  pointer-events:none;
+  transition:width .08s linear;
+}
+.fan-slider-wrap input[type="range"]{
+  position:relative;
+  z-index:2;
+  width:100%;
+  height:100%;
+  margin:0;
+  opacity:0;
+  cursor:pointer;
+}
+.fan-label{
+  position:absolute;
+  z-index:1;
+  left:14px;right:14px;
+  display:flex;
+  justify-content:space-between;
+  font-size:12.5px;
+  font-weight:600;
+  pointer-events:none;
+  mix-blend-mode:difference;
+  color:#ffffff;
+}
+
+/* Miuix WarningCard */
+.warning-card{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  background:var(--danger-soft);
+  border:1px solid rgba(255,69,58,.22);
+  color:var(--danger);
+  border-radius:14px;
+  padding:10px 12px;
+  font-size:12px;
+  line-height:1.45;
+  margin-bottom:12px;
+}
+
+/* Curve Editor */
+svg#cvSvg{
+  width:100%;
+  display:block;
+  background:var(--surface-2);
+  border-radius:14px;
+  touch-action:none;
+  user-select:none;
+}
+.curve-inputs{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  margin-top:10px;
+}
+.num-box label{display:block;font-size:11px;color:var(--txt-2);text-align:center;margin-bottom:3px}
+.num-box input{
+  width:100%;
+  background:var(--surface-2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  color:var(--txt);
+  padding:8px 4px;
+  font:600 13px/1 ui-monospace,SFMono-Regular,monospace;
+  text-align:center;
+}
+.num-box input:focus{outline:2px solid var(--primary);border-color:transparent}
+
+.hint{font-size:12px;color:var(--txt-2);margin-top:10px;line-height:1.5}
+
+/* LogConsole */
+#log{
+  background:var(--log-bg);
+  color:var(--log-txt);
+  border-radius:12px;
+  padding:11px 12px;
+  font:11.5px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;
+  max-height:210px;
+  overflow:auto;
+  white-space:pre-wrap;
+  word-break:break-all;
+}
+
+/* Miuix Dialog */
+.modal-mask{
+  position:fixed;
+  inset:0;
+  z-index:80;
+  background:rgba(0,0,0,.46);
+  backdrop-filter:blur(4px);
+  display:none;
+  align-items:flex-end;
+  justify-content:center;
+  padding:16px;
+}
+.modal-mask.open{display:flex}
+@media (min-width:520px){.modal-mask{align-items:center}}
+.modal{
+  width:100%;
+  max-width:400px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:20px;
+  box-shadow:0 20px 50px rgba(0,0,0,.35);
+  animation:pop .18s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes pop{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+.modal h3{margin:0 0 8px;font-size:17px;font-weight:700;text-align:center}
+.modal p{margin:0 0 18px;font-size:13.5px;color:var(--txt-2);text-align:center;line-height:1.55}
+
+/* Toast */
+#toast{
+  position:fixed;
+  left:50%;
+  bottom:calc(20px + env(safe-area-inset-bottom));
+  transform:translate(-50%,16px);
+  background:var(--surface);
+  color:var(--txt);
+  border:1px solid var(--border);
+  padding:10px 16px;
+  border-radius:999px;
+  font-size:13px;
+  font-weight:600;
+  box-shadow:0 8px 28px rgba(0,0,0,.22);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s,transform .18s;
+  z-index:90;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
 </style>
 </head>
 <body>
-<h1>PICO 帧率控制</h1>
-<div class="sub">PICO 4 Ultra · 刷新率解锁 <span id="ver" class="tag">v1.1</span></div>
 
-<div class="card">
-  <h2>当前状态</h2>
-  <div style="text-align:center;margin-bottom:12px">
-    <div class="big" id="curFps">--</div>
-    <div class="sub" id="curMode">读取中…</div>
-  </div>
-  <div class="row"><span class="k">显示模式</span><span class="v" id="activeMode">--</span></div>
-  <div class="row"><span class="k">GPU 温度</span><span class="v" id="temp">--</span></div>
-  <div class="row"><span class="k">守护进程</span><span class="v" id="daemon">--</span></div>
-</div>
-
-<div class="card">
-  <h2>固定帧率</h2>
-  <div class="btns">
-    <button data-fps="60">60<small style="display:block;font-weight:400;font-size:11px;opacity:.7">省电</small></button>
-    <button data-fps="72">72<small style="display:block;font-weight:400;font-size:11px;opacity:.7">默认</small></button>
-    <button data-fps="90">90<small style="display:block;font-weight:400;font-size:11px;opacity:.7">性能</small></button>
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="title-wrap">
+      <h1>PICO 帧率控制</h1>
+      <div class="sub">PICO 4 Ultra · SukiSU WebUI</div>
+    </div>
+    <div class="top-pills">
+      <span class="pill primary">v1.2.0</span>
+      <span id="daemonBadge" class="pill"><span class="dot"></span><span>检测中</span></span>
+    </div>
   </div>
 </div>
 
-<div class="card">
-  <h2>智能模式</h2>
-  <div class="btns">
-    <button id="btnAuto">自动<small style="display:block;font-weight:400;font-size:11px;opacity:.7">视频60</small></button>
-    <button id="btnCurve">温度曲线</button>
-    <button id="btnOff">关闭</button>
+<div class="wrap">
+  <div class="small-title">
+    <span>概览</span>
+    <span id="targetTag" class="pill">目标 --</span>
   </div>
-  <div class="hint">自动：视频类 App（YouTube VR / B站）→ 60fps，其它 → 72fps。</div>
+  <div class="card hero-card">
+    <div class="hero-top">
+      <div class="hero-fps"><span id="curFps">--</span><span class="unit">fps</span></div>
+      <div class="hero-meta">
+        <div class="hero-mode" id="curMode">读取中…</div>
+        <div class="hero-time" id="lastUpdate">等待同步</div>
+      </div>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="k">显示刷新率</div>
+        <div class="v" id="activeMode">--</div>
+      </div>
+      <div class="stat-tile">
+        <div class="k">GPU 温度</div>
+        <div class="v" id="temp">--</div>
+      </div>
+      <div class="stat-tile">
+        <div class="k">守护进程</div>
+        <div class="v" id="daemon">--</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="small-title"><span>固定刷新率</span></div>
+  <div class="card">
+    <div class="grid3">
+      <button data-fps="60">60 Hz<small>省电低热</small></button>
+      <button data-fps="72">72 Hz<small>原生默认</small></button>
+      <button data-fps="90">90 Hz<small>丝滑高刷</small></button>
+    </div>
+  </div>
+
+  <div class="small-title"><span>调度模式</span></div>
+  <div class="card">
+    <div class="grid2">
+      <button id="btnAuto">自动模式<small>视频 60 / 其它 72</small></button>
+      <button id="btnCurve">温度曲线<small>按 GPU 温度控帧</small></button>
+      <button id="btnSysDefault" class="ok-btn">遵从系统默认<small>移除全部内存补丁</small></button>
+      <button id="btnOff">关闭控制<small>恢复 72 fps</small></button>
+    </div>
+    <div class="hint">自动模式：YouTube VR / B站 / PICO 播放器自动切至 60 fps，其它应用保持 72 fps。</div>
+  </div>
+
+  <div class="small-title">
+    <span>狂暴与风扇</span>
+    <span id="thermalBadge" class="pill">原厂温控</span>
+  </div>
+  <div class="card">
+    <div class="warning-card">
+      <span>⚠️</span>
+      <span>狂暴模式会接管 <code>thermal-engine-v2</code> 温控风扇策略（保留电池安全监控），锁定 90 fps 与 100% 风扇。</span>
+    </div>
+    <div class="grid2" style="margin-bottom:10px">
+      <button id="btnBerserk" class="danger-btn">开启狂暴模式<small>接管温控 + 风扇100% + 90fps</small></button>
+      <button id="btnFanRestore" class="outline">恢复默认风扇<small>恢复原厂温控 + 50%</small></button>
+    </div>
+
+    <div class="row" style="padding-top:6px;padding-bottom:10px">
+      <div>
+        <div class="row-title">温控服务接管 (thermal-engine-v2)</div>
+        <div class="row-desc" id="thermalDesc">原厂策略每 2 秒重置风扇转速</div>
+      </div>
+      <button id="btnToggleThermal" class="outline sm">接管温控</button>
+    </div>
+
+    <div class="row" style="padding-top:4px;border-bottom:none;padding-bottom:2px">
+      <div>
+        <div class="row-title">风扇手动转速</div>
+        <div class="row-desc">PicoStation-new (code 121)</div>
+      </div>
+      <span id="fanVal" class="pill primary">50%</span>
+    </div>
+
+    <div class="fan-slider-wrap">
+      <div class="fan-fill" id="fanFill"></div>
+      <div class="fan-label"><span>0%</span><span>100%</span></div>
+      <input type="range" id="fanSlider" min="0" max="100" value="50">
+    </div>
+
+    <div class="grid4">
+      <button class="outline sm" data-fan="30">30%</button>
+      <button class="outline sm" data-fan="50">50%</button>
+      <button class="outline sm" data-fan="75">75%</button>
+      <button id="btnSetFan" class="on sm">应用</button>
+    </div>
+  </div>
+
+  <div class="small-title">
+    <span>温度曲线</span>
+    <span id="curvePreview" class="pill">45:90,50:72,55:60,60:45</span>
+  </div>
+  <div class="card">
+    <svg id="cvSvg" viewBox="0 0 360 170">
+      <line x1="42" y1="18" x2="342" y2="18" stroke="rgba(128,128,140,.22)" stroke-dasharray="3 3"/>
+      <line x1="42" y1="54" x2="342" y2="54" stroke="rgba(128,128,140,.22)" stroke-dasharray="3 3"/>
+      <line x1="42" y1="84" x2="342" y2="84" stroke="rgba(128,128,140,.22)" stroke-dasharray="3 3"/>
+      <line x1="42" y1="128" x2="342" y2="128" stroke="rgba(128,128,140,.35)"/>
+      <line x1="42" y1="14" x2="42" y2="128" stroke="rgba(128,128,140,.35)"/>
+      <text x="10" y="21" fill="#8e8e93" font-size="10">90</text>
+      <text x="10" y="57" fill="#8e8e93" font-size="10">72</text>
+      <text x="10" y="87" fill="#8e8e93" font-size="10">60</text>
+      <text x="10" y="131" fill="#8e8e93" font-size="10">45</text>
+      <text x="42" y="145" fill="#8e8e93" font-size="9">20°C</text>
+      <text x="150" y="145" fill="#8e8e93" font-size="9">50°C</text>
+      <text x="248" y="145" fill="#8e8e93" font-size="9">75°C</text>
+      <text x="320" y="145" fill="#8e8e93" font-size="9">95°C</text>
+      <text x="160" y="162" fill="#8e8e93" font-size="10">GPU 温度 →</text>
+      <line id="cvNowTemp" x1="-10" y1="14" x2="-10" y2="128" stroke="#ff9f0a" stroke-width="1.5" stroke-dasharray="4 3" opacity="0"/>
+      <polyline id="cvLine" fill="none" stroke="#3482ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle id="cvP0" r="7" fill="#3482ff" stroke="#ffffff" stroke-width="2" cursor="grab"/>
+      <circle id="cvP1" r="7" fill="#3482ff" stroke="#ffffff" stroke-width="2" cursor="grab"/>
+      <circle id="cvP2" r="7" fill="#3482ff" stroke="#ffffff" stroke-width="2" cursor="grab"/>
+      <circle id="cvP3" r="7" fill="#3482ff" stroke="#ffffff" stroke-width="2" cursor="grab"/>
+      <text id="cvT0" fill="#8e8e93" font-size="10" font-weight="600" text-anchor="middle"></text>
+      <text id="cvT1" fill="#8e8e93" font-size="10" font-weight="600" text-anchor="middle"></text>
+      <text id="cvT2" fill="#8e8e93" font-size="10" font-weight="600" text-anchor="middle"></text>
+      <text id="cvT3" fill="#8e8e93" font-size="10" font-weight="600" text-anchor="middle"></text>
+    </svg>
+
+    <div class="curve-inputs">
+      <div class="num-box"><label>T1 (°C)</label><input type="number" id="inT0" min="20" max="92"></div>
+      <div class="num-box"><label>T2 (°C)</label><input type="number" id="inT1" min="21" max="93"></div>
+      <div class="num-box"><label>T3 (°C)</label><input type="number" id="inT2" min="22" max="94"></div>
+      <div class="num-box"><label>T4 (°C)</label><input type="number" id="inT3" min="23" max="95"></div>
+    </div>
+    <div class="curve-inputs" style="margin-top:6px">
+      <div class="num-box"><label>F1 (fps)</label><input type="number" id="inF0" min="45" max="90"></div>
+      <div class="num-box"><label>F2 (fps)</label><input type="number" id="inF1" min="45" max="90"></div>
+      <div class="num-box"><label>F3 (fps)</label><input type="number" id="inF2" min="45" max="90"></div>
+      <div class="num-box"><label>F4 (fps)</label><input type="number" id="inF3" min="45" max="90"></div>
+    </div>
+    <div class="grid2" style="margin-top:12px">
+      <button id="btnSaveCurveV" class="on">保存并启用曲线</button>
+      <button id="btnResetCurve" class="outline">恢复默认曲线</button>
+    </div>
+  </div>
+
+  <div class="small-title">
+    <span>运行日志</span>
+    <button id="btnRestartDaemon" class="outline sm" style="padding:4px 10px">重启守护</button>
+  </div>
+  <div class="card">
+    <div id="log">加载中…</div>
+    <div class="grid2" style="margin-top:10px">
+      <button class="outline" id="btnRefresh">立即刷新</button>
+      <button class="outline" id="btnClearLog">清空日志</button>
+    </div>
+  </div>
 </div>
 
-<div class="card" style="border:1px solid #5c1a1a">
-  <h2 style="color:#ff6b6b">🔥 狂暴模式</h2>
-  <div class="btns">
-    <button id="btnBerserk" style="background:#5c1a1a;color:#ff6b6b">风扇 100% + 90fps</button>
-    <button id="btnSysDefault" style="background:#1a2b1a;color:#6bffa8">遵从系统默认</button>
-    <button id="btnFanRestore" style="background:#2b3038;color:#9aa0a6">恢复默认</button>
-  </div>
-  <div class="hint">风扇由 stationservice (code 121) 控制，0-100%。恢复默认 = 50%。</div>
-</div>
-
-<div class="card">
-  <h2>🌡️ 温度曲线（可视化）</h2>
-  <div class="hint" style="margin-bottom:12px">拖动四个温度点，控制对应档位帧率。当前档位高亮，越靠左越激进。</div>
-
-  <svg viewBox="0 0 360 160" style="width:100%;background:#0f1115;border-radius:10px">
-    <!-- 网格 -->
-    <line x1="40" y1="10" x2="40" y2="130" stroke="#23262d"/>
-    <line x1="40" y1="130" x2="340" y2="130" stroke="#23262d"/>
-    <text x="8" y="20" fill="#666" font-size="9">90fps</text>
-    <text x="8" y="68" fill="#666" font-size="9">72</text>
-    <text x="8" y="126" fill="#666" font-size="9">45</text>
-    <text x="180" y="150" fill="#666" font-size="9">GPU 温度 °C →</text>
-    <!-- 曲线（4点分段） -->
-    <polyline id="cvLine" fill="none" stroke="#8ab4f8" stroke-width="2"/>
-    <!-- 四个可拖点 -->
-    <circle id="cvP0" r="6" fill="#8ab4f8" cursor="pointer"/>
-    <circle id="cvP1" r="6" fill="#8ab4f8" cursor="pointer"/>
-    <circle id="cvP2" r="6" fill="#8ab4f8" cursor="pointer"/>
-    <circle id="cvP3" r="6" fill="#8ab4f8" cursor="pointer"/>
-    <!-- 档位标注 -->
-    <text id="cvT0" fill="#ccc" font-size="10"></text>
-    <text id="cvT1" fill="#ccc" font-size="10"></text>
-    <text id="cvT2" fill="#ccc" font-size="10"></text>
-    <text id="cvT3" fill="#ccc" font-size="10"></text>
-  </svg>
-
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">
-    <div><div class="hint">T1 温度</div><input type="number" id="inT0" style="width:100%"></div>
-    <div><div class="hint">T2 温度</div><input type="number" id="inT1" style="width:100%"></div>
-    <div><div class="hint">T3 温度</div><input type="number" id="inT2" style="width:100%"></div>
-    <div><div class="hint">T4 温度</div><input type="number" id="inT3" style="width:100%"></div>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">
-    <div><div class="hint">→ fps</div><input type="number" id="inF0" style="width:100%"></div>
-    <div><div class="hint">→ fps</div><input type="number" id="inF1" style="width:100%"></div>
-    <div><div class="hint">→ fps</div><input type="number" id="inF2" style="width:100%"></div>
-    <div><div class="hint">→ fps</div><input type="number" id="inF3" style="width:100%"></div>
-  </div>
-  <div class="btns" style="margin-top:12px">
-    <button id="btnSaveCurveV">保存曲线</button>
-    <button id="btnResetCurve" style="background:#2b3038;color:#9aa0a6">恢复默认</button>
-  </div>
-  <div class="hint">保存后 fpsd 的 CURVE= 会更新并立即生效（逗号分隔 8 个数：4温度+4帧率）。</div>
-</div>
-
-<div class="card">
-  <h2>风扇手动</h2>
-  <div style="display:flex;align-items:center;gap:12px">
-    <input type="range" id="fanSlider" min="0" max="100" value="50" style="flex:1"
-      oninput="document.getElementById('fanVal').textContent=this.value+'%'">
-    <span id="fanVal" style="font-weight:600;min-width:48px;text-align:right">50%</span>
-  </div>
-  <div style="display:flex;gap:8px;margin-top:10px">
-    <button style="flex:1;background:#2b3038" onclick="sh('service call PicoStation-new 121 i32 '+document.getElementById('fanSlider').value)">设置风扇</button>
-    <button style="flex:1;background:#5c1a1a;color:#ff6b6b" onclick="sh('service call PicoStation-new 121 i32 100')">全速</button>
-  </div>
-  <div class="hint" style="margin-top:8px">档位由 stationservice (PicoStation-new code 121) 控制，0-100%。部分档位可能有噪声差异。</div>
-</div>
-
-<div class="card">
-  <h2>温度曲线</h2>
-  <input id="curve" placeholder="45:90,50:72,55:60,60:45">
-  <div class="hint">格式 <code>温度:帧率</code>，逗号分隔。GPU 温度超过某档即降到对应帧率，用于自动控温。</div>
-  <div class="btns" style="margin-top:12px">
-    <button class="wide" id="btnSaveCurve">保存并启用曲线</button>
+<!-- Miuix Confirm Dialog -->
+<div class="modal-mask" id="modalMask">
+  <div class="modal">
+    <h3 id="modalTitle">确认操作</h3>
+    <p id="modalMsg"></p>
+    <div class="grid2">
+      <button class="outline" id="modalCancel">取消</button>
+      <button class="on" id="modalOk">确认</button>
+    </div>
   </div>
 </div>
 
-<div class="card">
-  <h2>风扇</h2>
-  <div class="row"><span class="k">硬件控制</span><span class="v"><span class="tag warn">不可用</span></span></div>
-  <div class="hint">PICO 4 Ultra 风扇由 GD32 MCU 经私有通道控制（API 在 libpxrfwcommon.so 的 Gd32IPDSDK::setFanSpeed，需在 PICO 服务进程内调用）。当前系统未暴露 sysfs/hwmon 节点。可用「温度曲线」间接实现同等效果：温度升高自动降帧，减少发热。</div>
-</div>
-
-<div class="card">
-  <h2>日志</h2>
-  <div id="log">加载中…</div>
-  <div class="btns" style="margin-top:12px">
-    <button class="ghost wide" id="btnRefresh">刷新</button>
-  </div>
-</div>
+<div id="toast"></div>
 
 <script>
 const KSU = window.ksu || window.KernelSU;
-async function sh(cmd){
-  if(!KSU) return "KSU bridge 不可用";
-  try{ const r = await KSU.exec(cmd); return (r.stdout||"")+(r.stderr||""); }
-  catch(e){ return "ERR: "+e; }
-}
-const BIN="/data/adb/modules/pico_fps_control/system/bin";
-let busy=false;
-async function refresh(){
-  if(busy) return; busy=true;
-  const st = await sh(BIN+"/fpsctl status 2>&1");
-  const g = k => (st.match(new RegExp(k+"=([^\\n]*)"))||[])[1]||"--";
-  document.getElementById("curFps").textContent = g("current")==="--"?"--":g("current")+" fps";
-  const modeMap={fixed:"固定帧率",auto:"自动模式",curve:"温度曲线",off:"已关闭",default:"系统默认"};
-  document.getElementById("curMode").textContent = modeMap[g("mode")]||g("mode");
-  document.getElementById("activeMode").textContent = (st.match(/activeMode=[0-9.]+ Hz/)||["--"])[0].replace("activeMode=","");
-  document.getElementById("temp").textContent = g("gpu_temp")==="--"?"--":g("gpu_temp")+" °C";
-  const d = await sh("cat /data/adb/pico_fps/fpsd.pid 2>/dev/null; ps -A 2>/dev/null | grep -c '[f]psd'");
-  document.getElementById("daemon").innerHTML = d.trim().endsWith("0")
-    ? '<span class="tag warn">未运行</span>'
-    : '<span class="tag ok">运行中</span>';
-  const cfg = await sh("cat /data/adb/pico_fps/config 2>/dev/null");
-  const cm = cfg.match(/CURVE=([^\n]*)/);
-  if(cm && !document.getElementById("curve").value) document.getElementById("curve").value = cm[1];
-  const lg = await sh("tail -n 20 /data/adb/pico_fps/fpsd.log 2>/dev/null");
-  document.getElementById("log").textContent = lg || "(空)";
-  busy=false;
-}
-async function act(cmd, label){
-  const btn=document.activeElement; if(btn) btn.disabled=true;
-  document.getElementById("curMode").textContent="执行中…";
-  const out = await sh(cmd);
-  await new Promise(r=>setTimeout(r,600));
-  await refresh();
-  if(btn) btn.disabled=false;
-  if(out && out.trim()) console.log(label, out);
-}
-document.querySelectorAll("[data-fps]").forEach(b=>{
-  b.onclick=()=>act(BIN+"/fpsctl set "+b.dataset.fps, "set");
-});
-document.getElementById("btnAuto").onclick=()=>act(BIN+"/fpsctl auto","auto");
-document.getElementById("btnCurve").onclick=()=>act(BIN+"/fpsctl curve","curve");
-document.getElementById("btnOff").onclick=()=>act(BIN+"/fpsctl off","off");
-document.getElementById("btnSaveCurve").onclick=async()=>{
-  const v=document.getElementById("curve").value.trim();
-  if(!v){alert("请输入曲线");return;}
-  await sh("mkdir -p /data/adb/pico_fps; touch /data/adb/pico_fps/config; "+
-    "if grep -q '^CURVE=' /data/adb/pico_fps/config; then sed -i 's|^CURVE=.*|CURVE="+v+"|' /data/adb/pico_fps/config; "+
-    "else echo 'CURVE="+v+"' >> /data/adb/pico_fps/config; fi; "+
-    BIN+"/fpsctl curve");
-  await refresh();
-};
-document.getElementById("btnRefresh").onclick=refresh;
+const BIN = "/data/adb/modules/pico_fps_control/system/bin";
+const CONF = "/data/adb/pico_fps/config";
+const LOGF = "/data/adb/pico_fps/fpsd.log";
 
-// ===== 温度曲线可视化 =====
-const CV = { pts: [45,50,55,60], fps: [90,72,60,45] };
-const SVG_W = 340, SVG_H = 130, X0 = 40, Y0 = 130, SCALE = 100;
+let busy = false;
+let isEditingCurve = false;
+let curveLoadedOnce = false;
+let latestGpuTemp = null;
+let toastTimer = null;
 
-function cvX(t){ return X0 + (t/100)*(SVG_W-X0); }
-function cvY(f){ return Y0 - (f/90)*(Y0-10); }
-function x2t(x){ return Math.round(((x-X0)/(SVG_W-X0))*100); }
-function y2f(y){ return Math.round(((Y0-y)/(Y0-10))*90); }
+function showToast(msg){
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+}
 
-function cvDraw(){
-  const line = document.getElementById("cvLine");
-  if(!line) return;
-  let d = "";
-  CV.pts.forEach((t,i)=>{
-    d += (i===0?"M":"L") + cvX(t) + " " + cvY(CV.fps[i]) + " ";
-    const c = document.getElementById("cvP"+i);
-    c.setAttribute("cx", cvX(t)); c.setAttribute("cy", cvY(CV.fps[i]));
-    const tx = document.getElementById("cvT"+i);
-    tx.setAttribute("x", cvX(t)-18); tx.setAttribute("y", cvY(CV.fps[i])-10);
-    tx.textContent = t+"°/"+CV.fps[i];
+function showDialog(title, msg, danger){
+  return new Promise(resolve => {
+    const mask = document.getElementById("modalMask");
+    const okBtn = document.getElementById("modalOk");
+    document.getElementById("modalTitle").textContent = title;
+    document.getElementById("modalMsg").textContent = msg;
+    okBtn.className = danger ? "danger-btn" : "on";
+    mask.classList.add("open");
+    const done = val => {
+      mask.classList.remove("open");
+      resolve(val);
+    };
+    document.getElementById("modalCancel").onclick = () => done(false);
+    okBtn.onclick = () => done(true);
+    mask.onclick = e => { if(e.target === mask) done(false); };
   });
-  line.setAttribute("points", d.trim());
-  for(let i=0;i<4;i++){
-    document.getElementById("inT"+i).value = CV.pts[i];
-    document.getElementById("inF"+i).value = CV.fps[i];
-  }
 }
-function cvLoad(){
-  sh("grep '^CURVE=' /data/adb/pico_fps/config").then(r=>{
-    const m = (r||"").match(/CURVE=([\d:,.]+)/);
-    if(m){
-      const nums = m[1].split(",").map(Number);
-      if(nums.length===8){ CV.pts=nums.slice(0,4); CV.fps=nums.slice(4,8); }
+
+function execKsu(cmd){
+  return new Promise(resolve => {
+    if(!KSU || typeof KSU.exec !== "function"){
+      resolve({ errno: -1, stdout: "", stderr: "KSU bridge 不可用" });
+      return;
+    }
+    const cbName = "_ksu_cb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    let settled = false;
+    const finish = (errno, stdout, stderr) => {
+      if(settled) return;
+      settled = true;
+      delete window[cbName];
+      resolve({ errno: Number(errno) || 0, stdout: stdout || "", stderr: stderr || "" });
+    };
+    window[cbName] = (errno, stdout, stderr) => finish(errno, stdout, stderr);
+    try{
+      const ret = KSU.exec(cmd, "{}", cbName);
+      if(ret && typeof ret.then === "function"){
+        ret.then(r => {
+          if(typeof r === "string") finish(0, r, "");
+          else finish(r?.errno ?? 0, r?.stdout, r?.stderr);
+        }).catch(e => finish(-1, "", String(e)));
+      }else if(typeof ret === "string"){
+        finish(0, ret, "");
+      }
+    }catch(e){
+      try{
+        const ret2 = KSU.exec(cmd, cbName);
+        if(ret2 && typeof ret2.then === "function"){
+          ret2.then(r => finish(r?.errno ?? 0, r?.stdout, r?.stderr)).catch(err => finish(-1, "", String(err)));
+        }else if(typeof ret2 === "string"){
+          finish(0, ret2, "");
+        }
+      }catch(e2){
+        finish(-1, "", String(e2));
+      }
+    }
+    setTimeout(() => finish(-1, "", "exec timeout"), 8000);
+  });
+}
+
+async function sh(cmd){
+  const r = await execKsu(cmd);
+  if(r.errno !== 0 && !r.stdout && r.stderr) return "ERR: " + r.stderr;
+  return (r.stdout || "") + (r.stderr || "");
+}
+
+function setConfScript(key, val){
+  return `mkdir -p /data/adb/pico_fps; touch ${CONF}; if grep -q '^${key}=' ${CONF}; then sed -i 's|^${key}=.*|${key}=${val}|' ${CONF}; else echo '${key}=${val}' >> ${CONF}; fi`;
+}
+
+function updateFanVisual(pct){
+  pct = Math.max(0, Math.min(100, Number(pct) || 0));
+  document.getElementById("fanSlider").value = pct;
+  document.getElementById("fanVal").textContent = pct + "%";
+  document.getElementById("fanFill").style.width = pct + "%";
+}
+
+function updateActiveButtons(mode, target){
+  document.querySelectorAll("[data-fps]").forEach(b => {
+    b.classList.toggle("on", mode === "fixed" && b.dataset.fps === String(target));
+  });
+  document.getElementById("btnAuto").classList.toggle("on", mode === "auto");
+  document.getElementById("btnCurve").classList.toggle("on", mode === "curve");
+  document.getElementById("btnSysDefault").classList.toggle("on", mode === "default");
+  document.getElementById("btnOff").classList.toggle("on", mode === "off");
+}
+
+function parseCurveStr(raw){
+  if(!raw) return null;
+  raw = raw.trim();
+  if(raw.includes(":")){
+    const segs = raw.split(",").map(s => s.trim().split(":").map(Number)).filter(a => a.length === 2 && !isNaN(a[0]) && !isNaN(a[1]));
+    if(segs.length === 4) return { pts: segs.map(a => a[0]), fps: segs.map(a => a[1]) };
+  }else{
+    const nums = raw.split(",").map(Number).filter(n => !isNaN(n));
+    if(nums.length === 8) return { pts: nums.slice(0,4), fps: nums.slice(4,8) };
+  }
+  return null;
+}
+
+function formatCurveStr(){
+  return CV.pts.map((t,i) => `${t}:${CV.fps[i]}`).join(",");
+}
+
+async function refresh(){
+  if(busy) return;
+  busy = true;
+  try{
+    const st = await sh(`${BIN}/fpsctl status 2>&1`);
+    const g = k => (st.match(new RegExp(k + "=([^\\n]*)")) || [])[1] || "--";
+
+    const mode = g("mode");
+    const target = g("target");
+    const cur = g("current");
+    const gpuT = g("gpu_temp");
+    const thermalOvr = g("thermal_override") === "1";
+    const active = (st.match(/activeMode=([0-9.]+ Hz)/) || [])[1] || "--";
+    const activeNum = active !== "--" ? active.replace(/\s*Hz/i, "") : "--";
+    const displayFps = (cur && cur !== "--") ? cur : activeNum;
+
+    document.getElementById("curFps").textContent = displayFps;
+    document.getElementById("targetTag").textContent = `目标 ${target} fps`;
+    const modeMap = {
+      fixed: `固定 ${target} fps`,
+      auto: "自动模式",
+      curve: "温度曲线",
+      default: "系统默认",
+      off: "已关闭"
+    };
+    document.getElementById("curMode").textContent = modeMap[mode] || mode;
+    document.getElementById("activeMode").textContent = active;
+
+    const tempEl = document.getElementById("temp");
+    if(gpuT === "--"){
+      tempEl.textContent = "--";
+      latestGpuTemp = null;
+    }else{
+      const tn = Number(gpuT);
+      latestGpuTemp = isNaN(tn) ? null : tn;
+      tempEl.textContent = `${gpuT} °C`;
+      tempEl.style.color = tn >= 65 ? "var(--danger)" : (tn >= 55 ? "var(--warn)" : "var(--ok)");
+    }
+
+    updateActiveButtons(mode, target);
+
+    const tb = document.getElementById("thermalBadge");
+    const tbtn = document.getElementById("btnToggleThermal");
+    const tdesc = document.getElementById("thermalDesc");
+    tb.className = "pill " + (thermalOvr ? "primary" : "");
+    tb.textContent = thermalOvr ? "温控已接管" : "原厂温控";
+    tbtn.textContent = thermalOvr ? "恢复原厂" : "接管温控";
+    tbtn.className = thermalOvr ? "on sm" : "outline sm";
+    tbtn.dataset.ovr = thermalOvr ? "1" : "0";
+    tdesc.textContent = thermalOvr ? "已禁用原厂风扇降速，仅保留电池安全保护" : "原厂策略每 2 秒重置风扇转速";
+
+    const d = await sh("ps -A 2>/dev/null | grep -c '[f]psd'");
+    const running = !d.trim().endsWith("0");
+    document.getElementById("daemon").textContent = running ? "运行中" : "未运行";
+    document.getElementById("daemon").style.color = running ? "var(--ok)" : "var(--warn)";
+    const db = document.getElementById("daemonBadge");
+    db.className = "pill " + (running ? "ok" : "warn");
+    db.innerHTML = `<span class="dot${running ? " pulse" : ""}"></span><span>${running ? "守护运行中" : "守护未运行"}</span>`;
+
+    if(!curveLoadedOnce && !isEditingCurve){
+      const cfg = await sh(`cat ${CONF} 2>/dev/null`);
+      const cm = cfg.match(/^CURVE=([^\n]*)/m);
+      const parsed = cm ? parseCurveStr(cm[1]) : null;
+      if(parsed){
+        CV.pts = parsed.pts;
+        CV.fps = parsed.fps;
+      }
+      const fm = cfg.match(/^FAN=(\d+)/m);
+      if(fm) updateFanVisual(fm[1]);
+      curveLoadedOnce = true;
     }
     cvDraw();
-  });
+
+    const lg = await sh(`tail -n 30 ${LOGF} 2>/dev/null`);
+    const logEl = document.getElementById("log");
+    const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+    logEl.textContent = lg.trim() ? lg : "(空)";
+    if(atBottom) logEl.scrollTop = logEl.scrollHeight;
+
+    const now = new Date();
+    document.getElementById("lastUpdate").textContent = `同步于 ${now.toTimeString().slice(0,8)}`;
+  }finally{
+    busy = false;
+  }
 }
-function cvDrag(i){
+
+async function act(cmd, toastMsg){
+  const btn = document.activeElement;
+  if(btn && btn.tagName === "BUTTON") btn.disabled = true;
+  document.getElementById("curMode").textContent = "执行中…";
+  await sh(cmd);
+  await new Promise(r => setTimeout(r, 450));
+  await refresh();
+  if(btn && btn.tagName === "BUTTON") btn.disabled = false;
+  if(toastMsg) showToast(toastMsg);
+}
+
+document.querySelectorAll("[data-fps]").forEach(b => {
+  b.onclick = () => act(`${BIN}/fpsctl set ${b.dataset.fps}`, `已切换为固定 ${b.dataset.fps} fps`);
+});
+document.getElementById("btnAuto").onclick = () => act(`${BIN}/fpsctl auto`, "已切换为自动模式");
+document.getElementById("btnCurve").onclick = () => act(`${BIN}/fpsctl curve`, "已切换为温度曲线模式");
+document.getElementById("btnOff").onclick = () => act(`${BIN}/fpsctl off`, "已关闭控制，恢复 72 fps");
+
+document.getElementById("btnSysDefault").onclick = async () => {
+  if(!await showDialog("遵从系统默认", "将移除全部刷新率内存补丁，帧率调度交还系统原生策略。", false)) return;
+  act(`${BIN}/fpsctl default`, "已遵从系统默认");
+};
+
+document.getElementById("btnBerserk").onclick = async () => {
+  if(!await showDialog("开启狂暴模式", "将锁定 90 fps 并将风扇调至 100%，风噪和耗电会明显增加。", true)) return;
+  updateFanVisual(100);
+  act(`${BIN}/fpsctl berserk`, "已开启狂暴模式：风扇 100% + 90fps");
+};
+
+async function setFan(pct){
+  pct = Math.max(0, Math.min(100, Number(pct) || 50));
+  updateFanVisual(pct);
+  await act(`${BIN}/fpsctl fan ${pct}`, `已接管温控并设置风扇 ${pct}%`);
+}
+
+document.getElementById("fanSlider").oninput = function(){
+  updateFanVisual(this.value);
+};
+document.getElementById("btnSetFan").onclick = () => setFan(document.getElementById("fanSlider").value);
+document.getElementById("btnFanRestore").onclick = async () => {
+  updateFanVisual(50);
+  await act(`service call PicoStation-new 121 i32 50; [ -f ${CONF} ] && sed -i '/^FAN=/d' ${CONF}; ${BIN}/fpsctl thermal restore`, "已恢复原厂温控与默认风扇");
+};
+document.getElementById("btnToggleThermal").onclick = async function(){
+  const isOvr = this.dataset.ovr === "1";
+  if(isOvr){
+    await act(`[ -f ${CONF} ] && sed -i '/^FAN=/d' ${CONF}; ${BIN}/fpsctl thermal restore`, "已恢复原厂温控服务");
+  }else{
+    await act(`${BIN}/fpsctl thermal override`, "已接管温控服务");
+  }
+};
+document.querySelectorAll("[data-fan]").forEach(b => {
+  b.onclick = () => setFan(b.dataset.fan);
+});
+
+document.getElementById("btnRefresh").onclick = () => { refresh(); showToast("状态已刷新"); };
+document.getElementById("btnClearLog").onclick = async () => {
+  await sh(`: > ${LOGF}`);
+  await refresh();
+  showToast("日志已清空");
+};
+document.getElementById("btnRestartDaemon").onclick = () => act(`${BIN}/fpsd-stop; ${BIN}/fpsd-start`, "守护进程已重启");
+
+// ===== 温度曲线可视化 (20°C..95°C, 45..90fps) =====
+const CV = { pts: [45,50,55,60], fps: [90,72,60,45] };
+const X_MIN = 42, X_MAX = 342, Y_TOP = 18, Y_BOT = 128;
+const T_MIN = 20, T_MAX = 95, F_MIN = 45, F_MAX = 90;
+
+function cvX(t){ return X_MIN + ((t - T_MIN) / (T_MAX - T_MIN)) * (X_MAX - X_MIN); }
+function cvY(f){ return Y_BOT - ((f - F_MIN) / (F_MAX - F_MIN)) * (Y_BOT - Y_TOP); }
+function x2t(x){ return Math.round(T_MIN + ((x - X_MIN) / (X_MAX - X_MIN)) * (T_MAX - T_MIN)); }
+function y2f(y){ return Math.round(F_MIN + ((Y_BOT - y) / (Y_BOT - Y_TOP)) * (F_MAX - F_MIN)); }
+
+function clampCurve(){
+  for(let i=0;i<4;i++){
+    CV.pts[i] = Math.max(T_MIN, Math.min(T_MAX, Math.round(CV.pts[i])));
+    CV.fps[i] = Math.max(F_MIN, Math.min(F_MAX, Math.round(CV.fps[i])));
+  }
+  for(let i=1;i<4;i++){
+    if(CV.pts[i] <= CV.pts[i-1]) CV.pts[i] = Math.min(T_MAX, CV.pts[i-1] + 1);
+  }
+  for(let i=2;i>=0;i--){
+    if(CV.pts[i] >= CV.pts[i+1]) CV.pts[i] = Math.max(T_MIN, CV.pts[i+1] - 1);
+  }
+}
+
+function cvDraw(){
+  clampCurve();
+  const points = [];
+  CV.pts.forEach((t,i) => {
+    const x = cvX(t), y = cvY(CV.fps[i]);
+    points.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    const c = document.getElementById("cvP"+i);
+    c.setAttribute("cx", x); c.setAttribute("cy", y);
+    const tx = document.getElementById("cvT"+i);
+    tx.setAttribute("x", x);
+    tx.setAttribute("y", y < 34 ? y + 18 : y - 11);
+    tx.textContent = `${t}°/${CV.fps[i]}`;
+  });
+  document.getElementById("cvLine").setAttribute("points", points.join(" "));
+  const nowLine = document.getElementById("cvNowTemp");
+  if(latestGpuTemp !== null && latestGpuTemp >= T_MIN && latestGpuTemp <= T_MAX){
+    const nx = cvX(latestGpuTemp);
+    nowLine.setAttribute("x1", nx); nowLine.setAttribute("x2", nx);
+    nowLine.setAttribute("opacity", "0.85");
+  }else{
+    nowLine.setAttribute("opacity", "0");
+  }
+  for(let i=0;i<4;i++){
+    const ti = document.getElementById("inT"+i);
+    const fi = document.getElementById("inF"+i);
+    if(document.activeElement !== ti) ti.value = CV.pts[i];
+    if(document.activeElement !== fi) fi.value = CV.fps[i];
+  }
+  document.getElementById("curvePreview").textContent = formatCurveStr();
+}
+
+const svg = document.getElementById("cvSvg");
+let activeIdx = -1;
+for(let i=0;i<4;i++){
   const c = document.getElementById("cvP"+i);
-  let dragging=false;
-  c.addEventListener("pointerdown", e=>{ dragging=true; e.preventDefault(); });
-  const svg = c.ownerSVGElement;
-  svg.addEventListener("pointermove", e=>{
-    if(!dragging) return;
+  c.addEventListener("pointerdown", e => {
+    activeIdx = i;
+    isEditingCurve = true;
+    c.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  c.addEventListener("pointermove", e => {
+    if(activeIdx !== i) return;
     const rect = svg.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (360/rect.width);
-    const y = (e.clientY - rect.top) * (160/rect.height);
-    CV.pts[i] = Math.max(0, Math.min(100, x2t(x)));
-    CV.fps[i] = Math.max(45, Math.min(90, y2f(y)));
-    if(i>0 && CV.pts[i] <= CV.pts[i-1]) CV.pts[i] = CV.pts[i-1]+1;
-    if(i<3 && CV.pts[i] >= CV.pts[i+1]) CV.pts[i] = CV.pts[i+1]-1;
+    const x = (e.clientX - rect.left) * (360 / rect.width);
+    const y = (e.clientY - rect.top) * (170 / rect.height);
+    let nt = Math.max(T_MIN, Math.min(T_MAX, x2t(x)));
+    if(i > 0) nt = Math.max(CV.pts[i-1] + 1, nt);
+    if(i < 3) nt = Math.min(CV.pts[i+1] - 1, nt);
+    CV.pts[i] = nt;
+    CV.fps[i] = Math.max(F_MIN, Math.min(F_MAX, y2f(y)));
     cvDraw();
   });
-  svg.addEventListener("pointerup", ()=>{ dragging=false; });
+  const endDrag = () => { if(activeIdx === i){ activeIdx = -1; isEditingCurve = false; } };
+  c.addEventListener("pointerup", endDrag);
+  c.addEventListener("pointercancel", endDrag);
 }
-for(let i=0;i<4;i++) cvDrag(i);
-setTimeout(()=>{ cvLoad(); }, 1000);
-const bsc = document.getElementById("btnSaveCurveV");
-if(bsc) bsc.onclick = ()=>{
-  const all = [...CV.pts, ...CV.fps].join(",");
-  sh("sed -i 's/^CURVE=.*/CURVE="+all+"/' /data/adb/pico_fps/config");
-  sh(BIN+"/fpsctl curve");
-  alert("曲线已保存: "+all);
-};
-const brc = document.getElementById("btnResetCurve");
-if(brc) brc.onclick = ()=>{
-  CV.pts=[45,50,55,60]; CV.fps=[90,72,60,45];
-  sh("sed -i 's/^CURVE=.*/CURVE=45,50,55,60,90,72,60,45/' /data/adb/pico_fps/config");
-  cvDraw();
-};
-// 数字输入联动
+
 for(let i=0;i<4;i++){
-  const it=document.getElementById("inT"+i), if_=document.getElementById("inF"+i);
-  if(it) it.onchange=()=>{ CV.pts[i]=Number(it.value)||45; cvDraw(); };
-  if(if_) if_.onchange=()=>{ CV.fps[i]=Number(if_.value)||72; cvDraw(); };
+  const it = document.getElementById("inT"+i);
+  const if_ = document.getElementById("inF"+i);
+  it.addEventListener("focus", () => isEditingCurve = true);
+  if_.addEventListener("focus", () => isEditingCurve = true);
+  it.addEventListener("blur", () => isEditingCurve = false);
+  if_.addEventListener("blur", () => isEditingCurve = false);
+  it.addEventListener("change", () => { CV.pts[i] = Number(it.value) || 45; cvDraw(); });
+  if_.addEventListener("change", () => { CV.fps[i] = Number(if_.value) || 72; cvDraw(); });
 }
-const bb=document.getElementById("btnBerserk");
-if(bb) bb.onclick=()=>{
-  if(!confirm("狂暴模式：风扇 100% + 锁 90fps。风噪大、耗电高。确定？")) return;
-  sh("service call PicoStation-new 121 i32 100");
-  sh(BIN+"/fpsctl set 90");
-  refresh();
+
+document.getElementById("btnSaveCurveV").onclick = async () => {
+  const val = formatCurveStr();
+  await act(`${setConfScript("CURVE", val)}; ${BIN}/fpsctl curve`, `曲线已保存并启用: ${val}`);
 };
-const bf=document.getElementById("btnFanRestore");
-if(bf) bf.onclick=()=>{ sh("service call PicoStation-new 121 i32 50"); refresh(); };
-const bsd=document.getElementById("btnSysDefault");
-if(bsd) bsd.onclick=()=>{
-  if(!confirm("遵从系统默认：移除全部补丁，帧率和风扇都交给系统。确定？")) return;
-  sh(BIN+"/fpsctl default");
-  setTimeout(refresh, 1500);
+
+document.getElementById("btnResetCurve").onclick = async () => {
+  CV.pts = [45,50,55,60];
+  CV.fps = [90,72,60,45];
+  cvDraw();
+  await sh(setConfScript("CURVE", formatCurveStr()));
+  showToast("已恢复默认曲线");
 };
+
+updateFanVisual(50);
+cvDraw();
 refresh();
 setInterval(refresh, 5000);
 </script>
